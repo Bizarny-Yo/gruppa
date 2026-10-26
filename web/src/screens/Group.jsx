@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { get, post, patch } from "../api.js";
+import { get, post, patch, del } from "../api.js";
 import { useFetch, Icon, Avatar, Sheet, Spinner, ErrorBox } from "../ui.jsx";
 import PushToggle from "../PushToggle.jsx";
 import { WEEKDAYS_SHORT } from "../dates.js";
@@ -13,6 +13,7 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
   const [nameValue, setNameValue] = useState(me.user.name);
   const [savingName, setSavingName] = useState(false);
   const [selectedSubgroup, setSelectedSubgroup] = useState(me.user.subgroup ?? null);
+  const [removing, setRemoving] = useState(null);
   const isAdmin = me.user.role === "starosta";
 
   useEffect(() => {
@@ -39,6 +40,19 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
       notify(err.message, "err");
     } finally {
       setSavingName(false);
+    }
+  }
+
+  async function removeMember() {
+    if (!removing) return;
+    try {
+      await del(`/members/${removing.id}`);
+      notify(`${removing.name} удалён из группы`);
+      setRemoving(null);
+      members.reload();
+      onRefresh?.();
+    } catch (err) {
+      notify(err.message, "err");
     }
   }
 
@@ -184,11 +198,38 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
                   <span>{u.role === "starosta" ? "староста" : "студент"}</span>
                 </div>
                 {u.id === me.user.id && <span className="status-pill going">это вы</span>}
+                {isAdmin && u.id !== me.user.id && u.role !== "starosta" && (
+                  <button type="button" className="icon-btn" onClick={() => setRemoving(u)} aria-label={`Удалить ${u.name}`} title="Удалить из группы">
+                    <Icon name="x" size={14} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      <Sheet open={Boolean(removing)} onClose={() => setRemoving(null)} title="Удалить из группы">
+        {removing && (
+          <>
+            <p style={{ marginTop: 0, fontSize: 14 }}>
+              <strong>{removing.name}</strong> выйдет из группы. Вместе с ним удалятся его отметки
+              посещаемости и подписка на уведомления — вернуть нельзя.
+            </p>
+            <p className="tiny muted">
+              Если это ошибка — человек сможет зарегистрироваться заново по коду {me.group.code}.
+            </p>
+            <div className="row" style={{ gap: 10, marginTop: 8 }}>
+              <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={() => setRemoving(null)}>
+                Отмена
+              </button>
+              <button type="button" className="btn danger" style={{ flex: 1 }} onClick={removeMember}>
+                Удалить
+              </button>
+            </div>
+          </>
+        )}
+      </Sheet>
 
       <Sheet open={nameSheet} onClose={() => setNameSheet(false)} title="Изменить имя">
         <form onSubmit={saveName}>

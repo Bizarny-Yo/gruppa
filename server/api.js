@@ -266,6 +266,22 @@ api.patch("/me", requireAuth, (req, res) => {
   res.json({ ok: true, name });
 });
 
+api.delete("/members/:id", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Неверный id" });
+  if (id === req.user.id) return res.status(400).json({ error: "Нельзя удалить себя" });
+
+  const target = db
+    .prepare("SELECT id, name, role FROM users WHERE id = ? AND group_id = ?")
+    .get(id, req.user.groupId);
+  if (!target) return res.status(404).json({ error: "Такого участника нет" });
+  if (target.role === "starosta") return res.status(403).json({ error: "Нельзя удалить старосту" });
+
+  db.prepare("DELETE FROM users WHERE id = ?").run(id);
+  broadcast(req.user.groupId, "roster", { reason: "removed", userId: id });
+  res.json({ ok: true, removed: target.name });
+});
+
 api.get("/subgroups", requireAuth, (req, res) => {
   const labels = subgroupLabels(req.user.groupId);
   const rows = db
