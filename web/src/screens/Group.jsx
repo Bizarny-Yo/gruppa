@@ -1,17 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { get, post, patch } from "../api.js";
 import { useFetch, Icon, Avatar, Sheet, Spinner, ErrorBox } from "../ui.jsx";
 import PushToggle from "../PushToggle.jsx";
 import { WEEKDAYS_SHORT } from "../dates.js";
 
-export default function Group({ me, onLogout, notify }) {
+export default function Group({ me, onLogout, onRefresh, notify }) {
   const members = useFetch(() => get("/members"), []);
   const subjects = useFetch(() => get("/subjects"), []);
+  const subgroups = useFetch(() => get("/subgroups"), []);
   const [sheet, setSheet] = useState(null); // "slot" | "subject"
   const [nameSheet, setNameSheet] = useState(false);
   const [nameValue, setNameValue] = useState(me.user.name);
   const [savingName, setSavingName] = useState(false);
+  const [selectedSubgroup, setSelectedSubgroup] = useState(me.user.subgroup ?? null);
   const isAdmin = me.user.role === "starosta";
+
+  useEffect(() => {
+    setSelectedSubgroup(me.user.subgroup ?? null);
+  }, [me.user.subgroup]);
+
+  const subgroupList = subgroups.data?.length
+    ? subgroups.data
+    : [
+        { code: "А", label: "А" },
+        { code: "Б", label: "Б" },
+      ];
+  const currentSubgroup = subgroupList.find((g) => g.code === selectedSubgroup) ?? null;
 
   async function saveName(e) {
     e.preventDefault();
@@ -34,11 +48,14 @@ export default function Group({ me, onLogout, notify }) {
   }
 
   async function chooseSubgroup(value) {
+    const prev = selectedSubgroup;
+    setSelectedSubgroup(value); // мгновенно подсвечиваем, не ждём сервер
     try {
       await post("/me/subgroup", { subgroup: value });
       notify(`Подгруппа: ${value}`);
       onRefresh?.();
     } catch (err) {
+      setSelectedSubgroup(prev);
       notify(err.message, "err");
     }
   }
@@ -105,16 +122,21 @@ export default function Group({ me, onLogout, notify }) {
             <div>
               <strong style={{ fontSize: 14 }}>Подгруппа</strong>
               <div className="tiny muted">
-                {me.user.subgroup
-                  ? `Сейчас: группа ${me.user.subgroup}. Влияет на практикумы и язык`
+                {currentSubgroup
+                  ? `Сейчас: ${currentSubgroup.label}${currentSubgroup.teacher ? ` · ${currentSubgroup.teacher}` : ""}`
                   : "Выбери свою — уберём лишние пары из расписания"}
               </div>
             </div>
           </div>
           <div className="segmented" style={{ marginTop: 12, marginBottom: 0 }}>
-            {["А", "Б"].map((g) => (
-              <button key={g} type="button" className={me.user.subgroup === g ? "on" : ""} onClick={() => chooseSubgroup(g)}>
-                Группа {g}
+            {subgroupList.map((g) => (
+              <button
+                key={g.code}
+                type="button"
+                className={selectedSubgroup === g.code ? "on" : ""}
+                onClick={() => chooseSubgroup(g.code)}
+              >
+                {g.label}
               </button>
             ))}
           </div>

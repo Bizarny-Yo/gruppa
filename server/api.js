@@ -56,6 +56,28 @@ const STATUSES = ["going", "late", "absent", "sick"];
 
 const userPublic = (u) => ({ id: u.id, name: u.name, role: u.role, color: u.color, subgroup: u.subgroup ?? null });
 
+/** «Маклецов С. В.» → «Маклецов» */
+function shortTeacher(teacher) {
+  const s = String(teacher ?? "").replace(/\s+/g, " ").trim();
+  const m = s.match(/([А-ЯЁ][а-яё]{2,})/);
+  return m ? m[1] : s;
+}
+
+/** Подгруппа → фамилия преподавателя, который её ведёт */
+function subgroupLabels(groupId) {
+  const rows = db
+    .prepare(
+      `SELECT subgroup, teacher, COUNT(*) AS n FROM slots
+       WHERE group_id = ? AND subgroup IS NOT NULL
+       GROUP BY subgroup, teacher ORDER BY subgroup, n DESC`
+    )
+    .all(groupId);
+
+  const map = new Map();
+  for (const r of rows) if (!map.has(r.subgroup)) map.set(r.subgroup, shortTeacher(r.teacher));
+  return map;
+}
+
 function groupUsers(groupId) {
   return db
     .prepare("SELECT id, name, role, color, subgroup FROM users WHERE group_id = ? ORDER BY role DESC, name")
@@ -98,7 +120,7 @@ function lessonStatus(iso, start, end) {
   return "upcoming";
 }
 
-function lessonView(groupId, slot, iso, userId, studentsTotal) {
+function lessonView(groupId, slot, iso, userId, studentsTotal, labels = new Map()) {
   const counts = attendanceCounts(slot.id, iso);
   const mine = db
     .prepare("SELECT status FROM attendance WHERE slot_id = ? AND date = ? AND user_id = ?")
@@ -114,6 +136,7 @@ function lessonView(groupId, slot, iso, userId, studentsTotal) {
     teacher: slot.teacher || slot.subject_teacher,
     parity: slot.parity,
     subgroup: slot.subgroup ?? null,
+    subgroupLabel: slot.subgroup ? labels.get(slot.subgroup) ?? slot.subgroup : null,
     subject: { id: slot.subject_id, name: slot.subject, color: slot.color },
     status: lessonStatus(iso, slot.start_time, slot.end_time),
     counts,
@@ -243,6 +266,31 @@ api.patch("/me", requireAuth, (req, res) => {
   res.json({ ok: true, name });
 });
 
+api.get("/subgroups", requireAuth, (req, res) => {
+  const labels = subgroupLabels(req.user.groupId);
+  const rows = db
+    .prepare(
+      `SELECT s.subgroup, s.teacher, s.room, sub.name AS subject
+       FROM slots s JOIN subjects sub ON sub.id = s.subject_id
+       WHERE s.group_id = ? AND s.subgroup IS NOT NULL
+       ORDER BY s.subgroup, s.id`
+    )
+    .all(req.user.groupId);
+
+  const seen = new Map();
+  for (const r of rows) {
+    if (seen.has(r.subgroup)) continue;
+    seen.set(r.subgroup, {
+      code: r.subgroup,
+      label: labels.get(r.subgroup) ?? r.subgroup,
+      teacher: r.teacher,
+      subject: r.subject,
+      room: r.room,
+    });
+  }
+  res.json([...seen.values()]);
+});
+
 api.post("/me/subgroup", requireAuth, (req, res) => {
   const map = { "а": "А", "a": "А", "б": "Б", "b": "Б" };
   const raw = String(req.body?.subgroup ?? "").trim().toLowerCase();
@@ -259,6 +307,7 @@ function schedulePayload(user, dates) {
   const studentsTotal = db
     .prepare("SELECT COUNT(*) AS n FROM users WHERE group_id = ?")
     .get(user.groupId).n;
+  const labels = subgroupLabels(user.groupId);
 
   return dates.map((iso) => {
     const date = parseIso(iso);
@@ -268,7 +317,7 @@ function schedulePayload(user, dates) {
       weekday: weekdayOf(date),
       label: formatDateRu(iso),
       parity: parityOn(date),
-      lessons: slots.map((s) => lessonView(user.groupId, s, iso, user.id, studentsTotal)),
+      lessons: slots.map((s) => lessonView(user.groupId, s, iso, user.id, studentsTotal, labels)),
     };
   });
 }
