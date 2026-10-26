@@ -63,7 +63,7 @@ export function userFromRequest(req) {
 
   const row = db
     .prepare(
-      `SELECT s.token, s.expires_at, u.id, u.name, u.role, u.color, u.group_id, g.name AS group_name, g.code AS group_code
+      `SELECT s.token, s.expires_at, u.id, u.name, u.role, u.color, u.group_id, u.subgroup, g.name AS group_name, g.code AS group_code
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        JOIN groups g ON g.id = u.group_id
@@ -82,6 +82,7 @@ export function userFromRequest(req) {
     name: row.name,
     role: row.role,
     color: row.color,
+    subgroup: row.subgroup ?? null,
     groupId: row.group_id,
     groupName: row.group_name,
     groupCode: row.group_code,

@@ -54,15 +54,15 @@ export function sseHandler(req, res) {
 
 const STATUSES = ["going", "late", "absent", "sick"];
 
-const userPublic = (u) => ({ id: u.id, name: u.name, role: u.role, color: u.color });
+const userPublic = (u) => ({ id: u.id, name: u.name, role: u.role, color: u.color, subgroup: u.subgroup ?? null });
 
 function groupUsers(groupId) {
   return db
-    .prepare("SELECT id, name, role, color FROM users WHERE group_id = ? ORDER BY role DESC, name")
+    .prepare("SELECT id, name, role, color, subgroup FROM users WHERE group_id = ? ORDER BY role DESC, name")
     .all(groupId);
 }
 
-function slotsForDate(groupId, iso) {
+function slotsForDate(groupId, iso, subgroup = null) {
   const date = parseIso(iso);
   const wd = weekdayOf(date);
   const parity = parityOn(date);
@@ -73,9 +73,10 @@ function slotsForDate(groupId, iso) {
        WHERE s.group_id = ? AND s.weekday = ? AND (s.parity = 'all' OR s.parity = ?)
          AND (s.starts_on IS NULL OR s.starts_on <= ?)
          AND (s.ends_on IS NULL OR s.ends_on >= ?)
+         AND (s.subgroup IS NULL OR ? IS NULL OR s.subgroup = ?)
        ORDER BY s.start_time, s.pair, s.subgroup`
     )
-    .all(groupId, wd, parity, iso, iso);
+    .all(groupId, wd, parity, iso, iso, subgroup, subgroup);
 }
 
 function attendanceCounts(slotId, iso) {
@@ -224,6 +225,16 @@ api.get("/me", (req, res) => {
   });
 });
 
+api.post("/me/subgroup", requireAuth, (req, res) => {
+  const map = { "а": "А", "a": "А", "б": "Б", "b": "Б" };
+  const raw = String(req.body?.subgroup ?? "").trim().toLowerCase();
+  const subgroup = raw ? map[raw] : null;
+  if (raw && !subgroup) return res.status(400).json({ error: "Подгруппа: А или Б" });
+
+  db.prepare("UPDATE users SET subgroup = ? WHERE id = ?").run(subgroup, req.user.id);
+  res.json({ ok: true, subgroup });
+});
+
 /* ───────────────────────── расписание ───────────────────────── */
 
 function schedulePayload(user, dates) {
@@ -233,7 +244,7 @@ function schedulePayload(user, dates) {
 
   return dates.map((iso) => {
     const date = parseIso(iso);
-    const slots = slotsForDate(user.groupId, iso);
+    const slots = slotsForDate(user.groupId, iso, user.subgroup);
     return {
       date: iso,
       weekday: weekdayOf(date),

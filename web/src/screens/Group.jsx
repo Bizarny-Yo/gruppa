@@ -15,6 +15,16 @@ export default function Group({ me, onLogout, notify }) {
     onLogout();
   }
 
+  async function chooseSubgroup(value) {
+    try {
+      await post("/me/subgroup", { subgroup: value });
+      notify(`Подгруппа: ${value}`);
+      onRefresh?.();
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
   async function copyCode() {
     try {
       await navigator.clipboard.writeText(me.group.code);
@@ -50,6 +60,28 @@ export default function Group({ me, onLogout, notify }) {
 
       <div className="section">
         <PushToggle notify={notify} />
+      </div>
+
+      <div className="section">
+        <section className="card">
+          <div className="row between">
+            <div>
+              <strong style={{ fontSize: 14 }}>Подгруппа</strong>
+              <div className="tiny muted">
+                {me.user.subgroup
+                  ? `Сейчас: группа ${me.user.subgroup}. Влияет на практикумы и язык`
+                  : "Выбери свою — уберём лишние пары из расписания"}
+              </div>
+            </div>
+          </div>
+          <div className="segmented" style={{ marginTop: 12, marginBottom: 0 }}>
+            {["А", "Б"].map((g) => (
+              <button key={g} type="button" className={me.user.subgroup === g ? "on" : ""} onClick={() => chooseSubgroup(g)}>
+                Группа {g}
+              </button>
+            ))}
+          </div>
+        </section>
       </div>
 
       {isAdmin && (
