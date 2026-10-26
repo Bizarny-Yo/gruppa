@@ -153,6 +153,26 @@ CREATE TABLE IF NOT EXISTS bans (
   UNIQUE (group_id, name_key)
 );
 
+CREATE TABLE IF NOT EXISTS polls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  question TEXT NOT NULL,
+  options TEXT NOT NULL,
+  multiple INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS poll_votes (
+  poll_id INTEGER NOT NULL REFERENCES polls(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  option_index INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (poll_id, user_id, option_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_polls_group ON polls(group_id);
+
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   group_id INTEGER NOT NULL,

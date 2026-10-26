@@ -902,6 +902,52 @@ a { color: var(--accent-2); }
   font-variant-numeric: tabular-nums;
 }
 
+/* ─────────────────────── опросы ─────────────────────── */
+
+.poll-options {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.poll-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+  font-family: inherit;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+
+.poll-option.on { border-color: var(--accent); }
+
+.poll-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgb(108 140 255 / 12%);
+  transition: width .4s ease;
+}
+.poll-option.on .poll-fill { background: rgb(108 140 255 / 24%); }
+
+.poll-label { position: relative; flex: 1; }
+.poll-count {
+  position: relative;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .lesson-hw {
   display: flex;
   align-items: center;

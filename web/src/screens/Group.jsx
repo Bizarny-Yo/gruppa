@@ -45,6 +45,7 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
   const [codeSheet, setCodeSheet] = useState(false);
   const [codeValue, setCodeValue] = useState(me.group.code);
   const [savingCode, setSavingCode] = useState(false);
+  const [exportSheet, setExportSheet] = useState(false);
 
   async function saveCode(e) {
     e.preventDefault();
@@ -247,9 +248,9 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
             <button type="button" className="btn" onClick={() => setSheet("subject")}>
               <Icon name="book" size={16} /> Предмет
             </button>
-            <a className="btn" href="/api/export/attendance.csv" download>
-              <Icon name="download" size={16} /> Excel/CSV
-            </a>
+            <button type="button" className="btn" onClick={() => setExportSheet(true)}>
+              <Icon name="download" size={16} /> Выгрузка
+            </button>
             <button
               type="button"
               className="btn"
@@ -458,6 +459,19 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
             </div>
           </>
         )}
+      </Sheet>
+
+      <Sheet open={exportSheet} onClose={() => setExportSheet(false)} title="Выгрузка посещаемости">
+        <p className="tiny muted" style={{ marginTop: 0 }}>
+          За последние 120 дней. В Excel три листа: сводка по студентам, по предметам и подробно
+          по каждой паре.
+        </p>
+        <a className="btn primary block" href="/api/export/attendance.xlsx" download style={{ marginBottom: 10 }}>
+          <Icon name="download" size={16} /> Excel (.xlsx) — для деканата
+        </a>
+        <a className="btn block" href="/api/export/attendance.csv" download>
+          <Icon name="download" size={16} /> CSV — для своих таблиц
+        </a>
       </Sheet>
 
       <Sheet open={codeSheet} onClose={() => setCodeSheet(false)} title="Код группы">

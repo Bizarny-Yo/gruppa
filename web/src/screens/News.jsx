@@ -19,7 +19,12 @@ export default function News({ me, notify }) {
   const deadlines = useFetch(() => get("/deadlines"), []);
   const homework = useFetch(() => get("/homework"), []);
   const subjects = useFetch(() => get("/subjects"), []);
+  const polls = useFetch(() => get("/polls"), []);
   const now = useNow(1000);
+
+  const [pollOpen, setPollOpen] = useState(false);
+  const [pollForm, setPollForm] = useState({ question: "", options: ["", "", ""], multiple: false });
+  const [pollBusy, setPollBusy] = useState(false);
 
   const [hwOpen, setHwOpen] = useState(false);
   const [hwForm, setHwForm] = useState({ title: "", description: "", subjectId: "", dueDate: "" });
@@ -90,6 +95,45 @@ export default function News({ me, notify }) {
       await del(`/deadlines/${id}`);
       deadlines.reload();
       notify("Дедлайн удалён");
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  async function createPoll(e) {
+    e.preventDefault();
+    setPollBusy(true);
+    try {
+      await post("/polls", {
+        question: pollForm.question,
+        options: pollForm.options.filter((o) => o.trim()),
+        multiple: pollForm.multiple,
+      });
+      setPollForm({ question: "", options: ["", "", ""], multiple: false });
+      setPollOpen(false);
+      polls.reload();
+      notify("Опрос создан");
+    } catch (err) {
+      notify(err.message, "err");
+    } finally {
+      setPollBusy(false);
+    }
+  }
+
+  async function vote(id, option) {
+    try {
+      await post(`/polls/${id}/vote`, { option });
+      polls.reload();
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  async function removePoll(id) {
+    try {
+      await del(`/polls/${id}`);
+      polls.reload();
+      notify("Опрос удалён");
     } catch (err) {
       notify(err.message, "err");
     }
@@ -179,6 +223,64 @@ export default function News({ me, notify }) {
           ))}
         </div>
       )}
+
+      <div className="section">
+        <div className="section-head">
+          <h2>Опросы</h2>
+          <button type="button" className="link" onClick={() => setPollOpen(true)}>
+            + опрос
+          </button>
+        </div>
+
+        {(polls.data ?? []).length === 0 ? (
+          <div className="tiny muted" style={{ padding: "2px 2px 6px" }}>
+            Спроси группу: «идём на пару?», «кто сдал лабу?»
+          </div>
+        ) : (
+          (polls.data ?? []).map((p) => (
+            <div className="card" key={p.id} style={{ marginBottom: 10 }}>
+              <div className="row between" style={{ alignItems: "flex-start" }}>
+                <strong style={{ fontSize: 14 }}>{p.question}</strong>
+                {(isAdmin || p.author_id === me.user.id) && (
+                  <button type="button" className="link" style={{ fontSize: 12 }} onClick={() => removePoll(p.id)}>
+                    удалить
+                  </button>
+                )}
+              </div>
+
+              <div className="poll-options">
+                {p.options.map((label, i) => {
+                  const count = p.counts[i] ?? 0;
+                  const pct = p.voters ? Math.round((count / p.voters) * 100) : 0;
+                  const chosen = p.myVotes.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`poll-option${chosen ? " on" : ""}`}
+                      onClick={() => vote(p.id, i)}
+                      aria-pressed={chosen}
+                    >
+                      <span className="poll-fill" style={{ width: `${pct}%` }} />
+                      <span className="poll-label">
+                        {chosen ? "✓ " : ""}
+                        {label}
+                      </span>
+                      <span className="poll-count">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="tiny muted" style={{ marginTop: 6 }}>
+                {p.voters} проголосовало
+                {p.multiple ? " · можно несколько" : ""}
+                {p.author_name ? ` · ${p.author_name}` : ""}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
       <div className="section">
         <div className="section-head">
@@ -317,6 +419,52 @@ export default function News({ me, notify }) {
           </button>
         </form>
       </Sheet>
+      <Sheet open={pollOpen} onClose={() => setPollOpen(false)} title="Новый опрос">
+        <form onSubmit={createPoll}>
+          <div className="field">
+            <label htmlFor="pq">Вопрос</label>
+            <input
+              id="pq"
+              value={pollForm.question}
+              onChange={(e) => setPollForm({ ...pollForm, question: e.target.value })}
+              placeholder="Идём на консультацию в четверг?"
+              maxLength={160}
+              required
+            />
+          </div>
+
+          {pollForm.options.map((opt, i) => (
+            <div className="field" key={i}>
+              <label htmlFor={`po${i}`}>Вариант {i + 1}</label>
+              <input
+                id={`po${i}`}
+                value={opt}
+                onChange={(e) => {
+                  const next = [...pollForm.options];
+                  next[i] = e.target.value;
+                  setPollForm({ ...pollForm, options: next });
+                }}
+                placeholder={i === 0 ? "Да" : i === 1 ? "Нет" : "Необязательно"}
+              />
+            </div>
+          ))}
+
+          <label className="row" style={{ gap: 8, marginBottom: 14, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={pollForm.multiple}
+              onChange={(e) => setPollForm({ ...pollForm, multiple: e.target.checked })}
+              style={{ width: 18, height: 18 }}
+            />
+            Можно выбрать несколько вариантов
+          </label>
+
+          <button type="submit" className="btn primary block" disabled={pollBusy}>
+            {pollBusy ? "Создаём…" : "Создать опрос"}
+          </button>
+        </form>
+      </Sheet>
+
       <Sheet open={hwOpen} onClose={() => setHwOpen(false)} title="Новое задание">
         <form onSubmit={createHomework}>
           <div className="field">

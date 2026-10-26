@@ -3,6 +3,7 @@ import express from "express";
 import { writeFileSync, unlinkSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
 import { randomBytes } from "node:crypto";
+import * as XLSX from "xlsx";
 import { db, nowIso, isEmpty, makeGroup, seedDemo, pairTimes, getSetting, UPLOADS_DIR } from "./db.js";
 import {
   hashPassword, verifyPassword, createSession, destroySession,
@@ -1158,6 +1159,134 @@ api.post("/subjects", requireAdmin, (req, res) => {
   res.status(201).json({ id: Number(r.lastInsertRowid) });
 });
 
+/* ─────────────────────────── опросы ─────────────────────────── */
+
+const parsePoll = (row, userId) => {
+  let options = [];
+  try {
+    options = JSON.parse(row.options);
+  } catch {
+    options = [];
+  }
+
+  const votes = db.prepare("SELECT user_id, option_index FROM poll_votes WHERE poll_id = ?").all(row.id);
+  const counts = options.map((_, i) => votes.filter((v) => v.option_index === i).length);
+  const mine = votes.filter((v) => v.user_id === userId).map((v) => v.option_index);
+
+  return {
+    id: row.id,
+    question: row.question,
+    options,
+    multiple: Boolean(row.multiple),
+    author_id: row.author_id,
+    author_name: row.author_name ?? null,
+    created_at: row.created_at,
+    counts,
+    myVotes: mine,
+    voters: new Set(votes.map((v) => v.user_id)).size,
+  };
+};
+
+api.get("/polls", requireAuth, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT p.*, u.name AS author_name FROM polls p
+       LEFT JOIN users u ON u.id = p.author_id
+       WHERE p.group_id = ? ORDER BY p.id DESC LIMIT 20`
+    )
+    .all(req.user.groupId);
+
+  res.json(rows.map((r) => parsePoll(r, req.user.id)));
+});
+
+api.post("/polls", requireAuth, (req, res) => {
+  const question = String(req.body?.question ?? "").trim();
+  const rawOptions = Array.isArray(req.body?.options) ? req.body.options : [];
+
+  if (question.length < 3) return res.status(400).json({ error: "Вопрос слишком короткий" });
+
+  const options = rawOptions.map((o) => String(o ?? "").trim()).filter(Boolean).slice(0, 8);
+  if (options.length < 2) return res.status(400).json({ error: "Нужно минимум два варианта" });
+
+  const r = db
+    .prepare(
+      `INSERT INTO polls (group_id, author_id, question, options, multiple, created_at)
+       VALUES (?,?,?,?,?,?)`
+    )
+    .run(
+      req.user.groupId,
+      req.user.id,
+      question.slice(0, 160),
+      JSON.stringify(options),
+      req.body?.multiple ? 1 : 0,
+      nowIso()
+    );
+
+  logAction(req.user, "poll.add", question.slice(0, 80));
+  const row = db
+    .prepare("SELECT p.*, u.name AS author_name FROM polls p LEFT JOIN users u ON u.id = p.author_id WHERE p.id = ?")
+    .get(Number(r.lastInsertRowid));
+  broadcast(req.user.groupId, "polls", { id: row.id });
+  res.status(201).json(parsePoll(row, req.user.id));
+});
+
+api.post("/polls/:id/vote", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const poll = db.prepare("SELECT * FROM polls WHERE id = ? AND group_id = ?").get(id, req.user.groupId);
+  if (!poll) return res.status(404).json({ error: "Опрос не найден" });
+
+  let options = [];
+  try {
+    options = JSON.parse(poll.options);
+  } catch {
+    options = [];
+  }
+
+  const index = Number(req.body?.option);
+  if (!Number.isInteger(index) || index < 0 || index >= options.length) {
+    return res.status(400).json({ error: "Неверный вариант" });
+  }
+
+  const existing = db
+    .prepare("SELECT 1 FROM poll_votes WHERE poll_id = ? AND user_id = ? AND option_index = ?")
+    .get(id, req.user.id, index);
+
+  if (existing) {
+    db.prepare("DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ? AND option_index = ?").run(id, req.user.id, index);
+  } else {
+    if (!poll.multiple) {
+      db.prepare("DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ?").run(id, req.user.id);
+    }
+    db.prepare("INSERT INTO poll_votes (poll_id, user_id, option_index, created_at) VALUES (?,?,?,?)").run(
+      id,
+      req.user.id,
+      index,
+      nowIso()
+    );
+  }
+
+  broadcast(req.user.groupId, "polls", { id, changed: true });
+  const row = db
+    .prepare("SELECT p.*, u.name AS author_name FROM polls p LEFT JOIN users u ON u.id = p.author_id WHERE p.id = ?")
+    .get(id);
+  res.json(parsePoll(row, req.user.id));
+});
+
+api.delete("/polls/:id", requireAuth, (req, res) => {
+  const poll = db
+    .prepare("SELECT id, author_id FROM polls WHERE id = ? AND group_id = ?")
+    .get(Number(req.params.id), req.user.groupId);
+  if (!poll) return res.status(404).json({ error: "Опрос не найден" });
+
+  if (req.user.role !== "starosta" && poll.author_id !== req.user.id) {
+    return res.status(403).json({ error: "Удалить может автор или староста" });
+  }
+
+  db.prepare("DELETE FROM polls WHERE id = ?").run(poll.id);
+  logAction(req.user, "poll.delete", "");
+  res.json({ ok: true });
+});
+
 /* ─────────────────────────── экспорт ─────────────────────────── */
 
 api.get("/export/attendance.csv", requireAdmin, (req, res) => {
@@ -1183,6 +1312,80 @@ api.get("/export/attendance.csv", requireAdmin, (req, res) => {
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", `attachment; filename="attendance_${from}_${to}.csv"`);
   res.send("\uFEFF" + lines.join("\r\n"));
+});
+
+api.get("/export/attendance.xlsx", requireAdmin, (req, res) => {
+  const { from, to } = rangeOrDefault(req.query.from, req.query.to);
+  const gid = req.user.groupId;
+
+  const students = db
+    .prepare(
+      `SELECT u.id, u.name,
+         COALESCE(SUM(CASE WHEN a.status='going' THEN 1 ELSE 0 END),0) AS going,
+         COALESCE(SUM(CASE WHEN a.status='late' THEN 1 ELSE 0 END),0) AS late,
+         COALESCE(SUM(CASE WHEN a.status='absent' THEN 1 ELSE 0 END),0) AS absent,
+         COALESCE(SUM(CASE WHEN a.status='sick' THEN 1 ELSE 0 END),0) AS sick
+       FROM users u
+       LEFT JOIN attendance a ON a.user_id = u.id AND a.date BETWEEN ? AND ?
+       WHERE u.group_id = ? GROUP BY u.id ORDER BY u.name`
+    )
+    .all(from, to, gid);
+
+  const bySubject = db
+    .prepare(
+      `SELECT sub.name,
+         COALESCE(SUM(CASE WHEN a.status IN ('going','late') THEN 1 ELSE 0 END),0) AS visited,
+         COALESCE(SUM(CASE WHEN a.status='absent' THEN 1 ELSE 0 END),0) AS absent,
+         COUNT(a.id) AS total
+       FROM subjects sub
+       LEFT JOIN slots s ON s.subject_id = sub.id
+       LEFT JOIN attendance a ON a.slot_id = s.id AND a.date BETWEEN ? AND ?
+       WHERE sub.group_id = ? GROUP BY sub.id ORDER BY sub.name`
+    )
+    .all(from, to, gid);
+
+  const detail = db
+    .prepare(
+      `SELECT a.date, s.pair, sub.name AS subject, u.name AS student, a.status
+       FROM attendance a
+       JOIN slots s ON s.id = a.slot_id
+       JOIN subjects sub ON sub.id = s.subject_id
+       JOIN users u ON u.id = a.user_id
+       WHERE s.group_id = ? AND a.date BETWEEN ? AND ?
+       ORDER BY a.date, s.pair, u.name`
+    )
+    .all(gid, from, to);
+
+  const labels = { going: "Был", late: "Опоздал", absent: "Не был", sick: "Уважительная" };
+  const rate = (visited, total) => (total ? Math.round((visited / total) * 100) : "");
+
+  const wb = XLSX.utils.book_new();
+
+  const s1 = [["Студент", "Был", "Опоздал", "Пропустил", "Уважительная", "Всего", "% посещаемости"]];
+  for (const s of students) {
+    const total = s.going + s.late + s.absent + s.sick;
+    s1.push([s.name, s.going, s.late, s.absent, s.sick, total, rate(s.going + s.late, total)]);
+  }
+  const ws1 = XLSX.utils.aoa_to_sheet(s1);
+  ws1["!cols"] = [{ wch: 32 }, { wch: 8 }, { wch: 9 }, { wch: 11 }, { wch: 14 }, { wch: 8 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws1, "Сводка");
+
+  const s2 = [["Предмет", "Посещено", "Пропущено", "Всего", "% посещаемости"]];
+  for (const s of bySubject) s2.push([s.name, s.visited, s.absent, s.total, rate(s.visited, s.total)]);
+  const ws2 = XLSX.utils.aoa_to_sheet(s2);
+  ws2["!cols"] = [{ wch: 40 }, { wch: 10 }, { wch: 11 }, { wch: 8 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws2, "По предметам");
+
+  const s3 = [["Дата", "Пара", "Предмет", "Студент", "Статус"]];
+  for (const d of detail) s3.push([d.date, d.pair, d.subject, d.student, labels[d.status] ?? d.status]);
+  const ws3 = XLSX.utils.aoa_to_sheet(s3);
+  ws3["!cols"] = [{ wch: 12 }, { wch: 6 }, { wch: 32 }, { wch: 28 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws3, "Подробно");
+
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("content-disposition", `attachment; filename="attendance_${from}_${to}.xlsx"`);
+  res.send(buf);
 });
 
 /* ───────────────────────── push-уведомления ───────────────────────── */
