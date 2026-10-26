@@ -1,11 +1,11 @@
-import { get } from "../api.js";
+import { get, isStaff } from "../api.js";
 import { useFetch, Ring, Bar, Avatar, Spinner, ErrorBox } from "../ui.jsx";
 import { STATUS } from "../api.js";
 import { plural } from "./Today.jsx";
 
 export default function Stats({ me }) {
   const mine = useFetch(() => get("/stats/me"), []);
-  const group = useFetch(() => (me.user.role === "starosta" ? get("/stats/group") : Promise.resolve(null)), []);
+  const group = useFetch(() => (isStaff(me) ? get("/stats/group") : Promise.resolve(null)), []);
 
   if (mine.loading && !mine.data) return <Spinner text="Считаем статистику" />;
   if (mine.error) return <ErrorBox message={mine.error} onRetry={mine.reload} />;
@@ -61,7 +61,7 @@ export default function Stats({ me }) {
         </div>
       </div>
 
-      {me.user.role === "starosta" && (
+      {isStaff(me) && (
         <div className="section">
           <div className="section-head">
             <h2>Группа</h2>

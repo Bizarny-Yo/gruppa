@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { get, post, patch, del } from "../api.js";
+import { get, post, patch, del, isStaff, isStarosta } from "../api.js";
 import { useFetch, Icon, Avatar, Sheet, Spinner, ErrorBox } from "../ui.jsx";
 import PushToggle from "../PushToggle.jsx";
 import { WEEKDAYS_SHORT } from "../dates.js";
@@ -33,9 +33,9 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
   const members = useFetch(() => get("/members"), []);
   const subjects = useFetch(() => get("/subjects"), []);
   const subgroups = useFetch(() => get("/subgroups"), []);
-  const bans = useFetch(() => get("/bans"), []);
-  const moderation = useFetch(() => (me.user.role === "starosta" ? get("/moderation") : Promise.resolve(null)), []);
-  const audit = useFetch(() => (me.user.role === "starosta" ? get("/audit") : Promise.resolve(null)), []);
+  const bans = useFetch(() => (isStarosta(me) ? get("/bans") : Promise.resolve(null)), []);
+  const moderation = useFetch(() => (isStaff(me) ? get("/moderation") : Promise.resolve(null)), []);
+  const audit = useFetch(() => (isStaff(me) ? get("/audit") : Promise.resolve(null)), []);
   const [sheet, setSheet] = useState(null); // "slot" | "subject"
   const [nameSheet, setNameSheet] = useState(false);
   const [nameValue, setNameValue] = useState(me.user.name);
@@ -68,7 +68,8 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
     for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
     setCodeValue(out);
   }
-  const isAdmin = me.user.role === "starosta";
+  const isAdmin = isStaff(me);
+  const canManage = isStarosta(me);
 
   useEffect(() => {
     setSelectedSubgroup(me.user.subgroup ?? null);
@@ -120,6 +121,17 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
       moderation.reload();
       audit.reload();
       notify(decision === "approve" ? "Одобрено" : "Отклонено");
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  async function toggleRole(u) {
+    try {
+      const next = u.role === "deputy" ? "student" : "deputy";
+      await post(`/members/${u.id}/role`, { role: next });
+      members.reload();
+      notify(next === "deputy" ? `${u.name} — заместитель старосты` : `${u.name} больше не зам`);
     } catch (err) {
       notify(err.message, "err");
     }
@@ -251,17 +263,18 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
             <button type="button" className="btn" onClick={() => setExportSheet(true)}>
               <Icon name="download" size={16} /> Выгрузка
             </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setCodeValue(me.group.code);
-                setCodeSheet(true);
-              }}
-            >
-              <Icon name="settings" size={16} /> Код
-            </button>
-          </div>
+            {canManage && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  setCodeValue(me.group.code);
+                  setCodeSheet(true);
+                }}
+              >
+                <Icon name="settings" size={16} /> Код
+              </button>
+            )}          </div>
         </div>
       )}
 
@@ -281,13 +294,31 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
                 <Avatar name={u.name} color={u.color} size={32} />
                 <div className="who-name">
                   <strong>{u.name}</strong>
-                  <span>{u.role === "starosta" ? "староста" : "студент"}</span>
+                  <span>
+                    {u.role === "starosta" ? "староста" : u.role === "deputy" ? "зам. старосты" : "студент"}
+                  </span>
                 </div>
                 {u.id === me.user.id && <span className="status-pill going">это вы</span>}
-                {isAdmin && u.id !== me.user.id && u.role !== "starosta" && (
-                  <button type="button" className="icon-btn" onClick={() => setRemoving(u)} aria-label={`Удалить ${u.name}`} title="Удалить из группы">
-                    <Icon name="x" size={14} />
-                  </button>
+                {canManage && u.id !== me.user.id && u.role !== "starosta" && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn sm ghost"
+                      onClick={() => toggleRole(u)}
+                      title={u.role === "deputy" ? "Снять заместителя" : "Сделать заместителем"}
+                    >
+                      {u.role === "deputy" ? "снять" : "зам"}
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setRemoving(u)}
+                      aria-label={`Удалить ${u.name}`}
+                      title="Удалить из группы"
+                    >
+                      <Icon name="x" size={14} />
+                    </button>
+                  </>
                 )}
               </div>
             ))}
@@ -295,7 +326,7 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
         )}
       </div>
 
-      {isAdmin && (
+      {canManage && (
         <div className="section">
           <div className="section-head">
             <h2>Чёрный список</h2>

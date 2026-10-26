@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { get, post, del, subscribe } from "../api.js";
+import { get, post, del, subscribe, isStaff } from "../api.js";
 import { useFetch, Icon, Spinner, ErrorBox, Empty, Sheet, Avatar } from "../ui.jsx";
 import { dayNumber, monthShort, parseIso, todayIso, remainingMs, formatRemaining } from "../dates.js";
 
@@ -39,7 +39,7 @@ export default function News({ me, notify }) {
   const [dlForm, setDlForm] = useState({ title: "", dueDate: todayIso(), subjectId: "" });
   const [dlBusy, setDlBusy] = useState(false);
 
-  const isAdmin = me.user.role === "starosta";
+  const isAdmin = isStaff(me);
 
   useEffect(() => subscribe({ announcement: () => ann.reload() }), []);
 

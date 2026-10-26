@@ -1,4 +1,4 @@
-# HANDOFF — состояние проекта и как продолжить
+﻿# HANDOFF — состояние проекта и как продолжить
 
 Файл для нового чата (у агента нет памяти между сессиями).
 Прочитай его целиком, потом `README.md`, потом посмотри последние коммиты.
@@ -43,7 +43,7 @@ C:\Users\v_alb\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.
 powershell -ExecutionPolicy Bypass -File scripts/tunnel-serveo.ps1
 ```
 
-→ https://gruppa-pmi21.serveousercontent.com
+→ https://gruppa-05605.serveousercontent.com
 
 Важно:
 - serveo рвёт туннель каждые ~30 минут, скрипт переподключается сам, адрес не меняется

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { get, del } from "../api.js";
+import { get, del, isStaff } from "../api.js";
 import { useFetch, Icon, Spinner, ErrorBox } from "../ui.jsx";
 
 const MAX_MB = 40;
@@ -20,7 +20,7 @@ export default function Files({ me, notify }) {
   const [busy, setBusy] = useState(null);
   const inputs = useRef({});
 
-  const isAdmin = me.user.role === "starosta";
+  const isAdmin = isStaff(me);
 
   async function upload(subjectId, file) {
     if (!file) return;

@@ -104,7 +104,19 @@ export function requireAuth(req, res, next) {
   next();
 }
 
+/** Староста или его заместитель */
 export function requireAdmin(req, res, next) {
+  const user = userFromRequest(req);
+  if (!user) return res.status(401).json({ error: "Нужно войти" });
+  if (user.role !== "starosta" && user.role !== "deputy") {
+    return res.status(403).json({ error: "Только староста или заместитель" });
+  }
+  req.user = user;
+  next();
+}
+
+/** Только староста: удаление людей, ЧС, код группы, назначение зама */
+export function requireStarosta(req, res, next) {
   const user = userFromRequest(req);
   if (!user) return res.status(401).json({ error: "Нужно войти" });
   if (user.role !== "starosta") return res.status(403).json({ error: "Только староста" });

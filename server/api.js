@@ -7,7 +7,7 @@ import * as XLSX from "xlsx";
 import { db, nowIso, isEmpty, makeGroup, seedDemo, pairTimes, getSetting, UPLOADS_DIR } from "./db.js";
 import {
   hashPassword, verifyPassword, createSession, destroySession,
-  userFromRequest, requireAuth, requireAdmin, sessionCookie, clearCookie, parseCookies, isSecureRequest,
+  userFromRequest, requireAuth, requireAdmin, requireStarosta, sessionCookie, clearCookie, parseCookies, isSecureRequest,
 } from "./auth.js";
 import {
   publicKey, saveSubscription, removeSubscription, sendTest, sendToGroup, userHasSubscription,
@@ -330,7 +330,7 @@ api.patch("/me", requireAuth, (req, res) => {
   res.json({ ok: true, name });
 });
 
-api.delete("/members/:id", requireAdmin, (req, res) => {
+api.delete("/members/:id", requireStarosta, (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: "Неверный id" });
   if (id === req.user.id) return res.status(400).json({ error: "Нельзя удалить себя" });
@@ -354,9 +354,30 @@ api.delete("/members/:id", requireAdmin, (req, res) => {
   res.json({ ok: true, removed: target.name, banned: true });
 });
 
+api.post("/members/:id/role", requireStarosta, (req, res) => {
+  const id = Number(req.params.id);
+  const role = req.body?.role;
+
+  if (!["deputy", "student"].includes(role)) {
+    return res.status(400).json({ error: "role: deputy или student" });
+  }
+  if (id === req.user.id) return res.status(400).json({ error: "Себе роль не меняем" });
+
+  const target = db
+    .prepare("SELECT id, name, role FROM users WHERE id = ? AND group_id = ?")
+    .get(id, req.user.groupId);
+  if (!target) return res.status(404).json({ error: "Не найден" });
+  if (target.role === "starosta") return res.status(400).json({ error: "Старосту не трогаем" });
+
+  db.prepare("UPDATE users SET role = ? WHERE id = ?").run(role, id);
+  logAction(req.user, role === "deputy" ? "member.deputy" : "member.undeputy", target.name);
+  broadcast(req.user.groupId, "roster", { reason: "role" });
+  res.json({ ok: true, role });
+});
+
 /* ───────────────────────── чёрный список ───────────────────────── */
 
-api.get("/bans", requireAdmin, (req, res) => {
+api.get("/bans", requireStarosta, (req, res) => {
   res.json(
     db
       .prepare(
@@ -368,7 +389,7 @@ api.get("/bans", requireAdmin, (req, res) => {
   );
 });
 
-api.delete("/bans/:id", requireAdmin, (req, res) => {
+api.delete("/bans/:id", requireStarosta, (req, res) => {
   db.prepare("DELETE FROM bans WHERE id = ? AND group_id = ?").run(
     Number(req.params.id),
     req.user.groupId
@@ -451,7 +472,7 @@ api.post("/groups", (req, res) => {
 });
 
 /** Смена кода группы: закрывает доступ посторонним, кто знает номер группы */
-api.patch("/group", requireAdmin, (req, res) => {
+api.patch("/group", requireStarosta, (req, res) => {
   const code = String(req.body?.code ?? "").trim().toUpperCase();
 
   if (!/^[A-ZА-ЯЁ0-9-]{3,20}$/.test(code)) {

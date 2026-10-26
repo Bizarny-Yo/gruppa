@@ -36,6 +36,10 @@ export const post = (path, body, opts) => req(path, { ...opts, method: "POST", b
 export const patch = (path, body, opts) => req(path, { ...opts, method: "PATCH", body });
 export const del = (path, opts) => req(path, { ...opts, method: "DELETE" });
 
+/** Староста или его заместитель — видят админ-блоки */
+export const isStaff = (me) => me?.user?.role === "starosta" || me?.user?.role === "deputy";
+export const isStarosta = (me) => me?.user?.role === "starosta";
+
 /** Подписка на live-события группы */
 export function subscribe(handlers) {
   const es = new EventSource(`${BASE}/events`);

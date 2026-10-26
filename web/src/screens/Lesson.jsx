@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { get, post, del, subscribe, STATUS } from "../api.js";
+import { get, post, del, subscribe, STATUS, isStaff } from "../api.js";
 import { useFetch, Icon, Spinner, ErrorBox, Avatar } from "../ui.jsx";
 import StatusOptions from "../StatusOptions.jsx";
 import { go } from "../router.js";
@@ -121,7 +121,7 @@ export default function Lesson({ me, notify }) {
                     <span>{h.due_date ? `сдать ${dayNumber(h.due_date)} ${monthShort(h.due_date)}` : "без срока"}</span>
                   </div>
                 </div>
-                {(me.user.role === "starosta" || h.author_id === me.user.id) && (
+                {(isStaff(me) || h.author_id === me.user.id) && (
                   <button type="button" className="icon-btn" onClick={() => removeHomework(h.id)} aria-label="Удалить задание">
                     <Icon name="x" size={14} />
                   </button>
