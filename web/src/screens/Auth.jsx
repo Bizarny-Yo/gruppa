@@ -29,7 +29,7 @@ export default function Auth({ onAuth }) {
     setBusy(true);
     setError("");
     try {
-      await post("/auth/login", { code: "PMI21", name: "Артём Соколов", password: "demo1234" });
+      await post("/auth/login", { code: "05-605", name: "Артём Соколов", password: "demo1234" });
       onAuth(await get("/me"));
     } catch (err) {
       setError(err.message);
@@ -93,7 +93,7 @@ export default function Auth({ onAuth }) {
         <div className="row between">
           <div>
             <strong style={{ fontSize: 13.5 }}>Посмотреть демо</strong>
-            <div className="tiny muted">Группа ПМИ-21, 12 студентов, расписание</div>
+            <div className="tiny muted">Группа 05-605, расписание семестра</div>
           </div>
           <button type="button" className="btn sm" onClick={demo} disabled={busy}>
             <Icon name="spark" size={15} /> Открыть

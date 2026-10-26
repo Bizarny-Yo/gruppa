@@ -216,7 +216,10 @@ api.get("/me", (req, res) => {
 
   res.json({
     user: userPublic(user),
-    group: { id: group.id, name: group.name, code: group.code, students },
+    group: {
+      id: group.id, name: group.name, code: group.code, students,
+      program: group.program ?? null, profile: group.profile ?? null,
+    },
     parity: parityOn(new Date()),
     counts: {
       going: my.going ?? 0, late: my.late ?? 0,

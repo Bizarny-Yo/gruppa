@@ -54,7 +54,7 @@ function Shell({ me, onLogout, onRefresh }) {
           <div className="brand">
             <strong>{me.group.name}</strong>
             <span>
-              {me.user.role === "starosta" ? "староста" : "студент"} · {me.group.students} чел.
+              {me.group.profile ?? (me.user.role === "starosta" ? "староста" : "студент")} · {me.group.students} чел.
             </span>
           </div>
           <ParityBadge parity={me.parity} />

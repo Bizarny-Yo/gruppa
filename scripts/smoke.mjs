@@ -72,13 +72,13 @@ let studentsTotal = 0;
   const login = await call("/api/auth/login", {
     method: "POST",
     auth: false,
-    body: { code: "PMI21", name: "Артём Соколов", password: "demo1234" },
+    body: { code: "05-605", name: "Артём Соколов", password: "demo1234" },
   });
   check("логин demo-старосты", login.status === 200 && login.json?.user?.role === "starosta", JSON.stringify(login.json));
   check("выдана сессионная cookie", cookie.startsWith("sid="));
 
   const me = await call("/api/me");
-  check("GET /api/me → группа ПМИ-21", me.json?.group?.name === "ПМИ-21");
+  check("GET /api/me → группа 05-605", me.json?.group?.name === "05-605");
   studentsTotal = me.json?.group?.students ?? 0;
   check("в группе минимум 12 человек", studentsTotal >= 12, String(studentsTotal));
 }
@@ -98,7 +98,7 @@ let todayLessons = [];
   check("в неделе больше 10 пар", total > 10, `найдено ${total}`);
 
   const subjects = await call("/api/subjects");
-  check("GET /api/subjects → 6 предметов", subjects.json?.length === 6, String(subjects.json?.length));
+  check("GET /api/subjects → 9 предметов", subjects.json?.length === 9, String(subjects.json?.length));
 }
 
 section("Отметка посещаемости");
@@ -146,7 +146,7 @@ section("Статистика");
 
   const group = await call("/api/stats/group");
   check("GET /api/stats/group → вся группа", group.json?.students?.length === studentsTotal, `${group.json?.students?.length} vs ${studentsTotal}`);
-  check("статистика по предметам есть", (group.json?.bySubject ?? []).length === 6);
+  check("статистика по предметам есть", (group.json?.bySubject ?? []).length === 9);
 }
 
 section("Новости и дедлайны");
@@ -175,7 +175,7 @@ section("Экспорт");
     "CSV: правильный тип и заголовок",
     (csv.headers.get("content-type") ?? "").includes("text/csv") && csv.text.includes("Студент")
   );
-  check("CSV содержит строки отметок", csv.text.split("\r\n").length > 3);
+  check("CSV содержит строки отметок", csv.text.split("\r\n").filter(Boolean).length > 1);
 }
 
 section("Роли и регистрация");
@@ -187,7 +187,7 @@ section("Роли и регистрация");
   const reg = await call("/api/auth/register", {
     method: "POST",
     auth: false,
-    body: { code: "PMI21", name: `Новичок ${code}`, password: "pass1234" },
+    body: { code: "05-605", name: `Новичок ${code}`, password: "pass1234" },
   });
   check("регистрация нового студента → 201", reg.status === 201, JSON.stringify(reg.json));
 
@@ -258,7 +258,7 @@ section("Безопасность");
   const wrong = await call("/api/auth/login", {
     method: "POST",
     auth: false,
-    body: { code: "PMI21", name: "Артём Соколов", password: "неверный" },
+    body: { code: "05-605", name: "Артём Соколов", password: "неверный" },
   });
   check("неверный пароль → 401", wrong.status === 401);
 

@@ -41,7 +41,15 @@ export default function Group({ me, onLogout, notify }) {
           <Avatar name={me.user.name} color={me.user.color} size={52} ring />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ margin: 0, fontSize: 19, letterSpacing: "-0.02em" }}>{me.user.name}</h1>
-            <div className="tiny muted">{isAdmin ? "староста группы" : "студент"} · {me.group.name}</div>
+            <div className="tiny muted">
+              {isAdmin ? "староста" : "студент"} · группа {me.group.name}
+            </div>
+            {me.group.program && (
+              <div className="tiny muted">
+                {me.group.program}
+                {me.group.profile ? ` · ${me.group.profile}` : ""}
+              </div>
+            )}
           </div>
         </div>
 
