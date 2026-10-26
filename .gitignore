@@ -1,0 +1,16 @@
+node_modules/
+public/
+data/
+shots/
+*.log
+
+# OS / редакторы
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/
+
+# локальные секреты
+.env
+.env.*
+!.env.example

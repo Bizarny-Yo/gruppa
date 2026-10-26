@@ -1,0 +1,31 @@
+{
+  "name": "gruppa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Приложение для старосты группы: расписание, посещаемость, статистика",
+  "scripts": {
+    "dev": "node --watch server/index.js",
+    "start": "node server/index.js",
+    "build": "vite build",
+    "serve": "vite build && node server/index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.64.1",
+    "vite": "^6.0.7"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
