@@ -5,6 +5,7 @@ export function parseRoute(pathname) {
   if (parts[0] === "week") return { name: "week" };
   if (parts[0] === "lesson" && parts[1]) return { name: "lesson", slotId: Number(parts[1]) };
   if (parts[0] === "stats") return { name: "stats" };
+  if (parts[0] === "files") return { name: "files" };
   if (parts[0] === "news") return { name: "news" };
   if (parts[0] === "group") return { name: "group" };
   return { name: "today" };

@@ -7,6 +7,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = process.env.DATA_DIR ?? join(ROOT, "data");
 mkdirSync(DATA_DIR, { recursive: true });
 
+export const UPLOADS_DIR = join(DATA_DIR, "uploads");
+mkdirSync(UPLOADS_DIR, { recursive: true });
+
 export const db = new DatabaseSync(join(DATA_DIR, "gruppa.db"));
 db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA foreign_keys = ON");
@@ -127,6 +130,20 @@ CREATE TABLE IF NOT EXISTS homework_done (
   done_at TEXT NOT NULL,
   PRIMARY KEY (homework_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
+  uploader_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  stored_name TEXT NOT NULL,
+  mime TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_files_group ON files(group_id, subject_id);
 
 CREATE INDEX IF NOT EXISTS idx_homework_group ON homework(group_id);
 CREATE INDEX IF NOT EXISTS idx_homework_done ON homework_done(user_id);

@@ -9,6 +9,7 @@ import Today from "./screens/Today.jsx";
 import Week from "./screens/Week.jsx";
 import Lesson from "./screens/Lesson.jsx";
 import Stats from "./screens/Stats.jsx";
+import Files from "./screens/Files.jsx";
 import News from "./screens/News.jsx";
 import Group from "./screens/Group.jsx";
 
@@ -22,6 +23,7 @@ export const useToast = () => useContext(ToastContext);
 const TABS = [
   { id: "today", path: "/", label: "Сегодня", icon: "clock" },
   { id: "week", path: "/week", label: "Неделя", icon: "calendar" },
+  { id: "files", path: "/files", label: "Файлы", icon: "folder" },
   { id: "stats", path: "/stats", label: "Статистика", icon: "chart" },
   { id: "news", path: "/news", label: "Новости", icon: "bell" },
   { id: "group", path: "/group", label: "Группа", icon: "users" },
@@ -43,6 +45,7 @@ function Shell({ me, onLogout, onRefresh }) {
     week: <Week me={me} notify={notify} />,
     lesson: <Lesson me={me} slotId={route.slotId} notify={notify} />,
     stats: <Stats me={me} />,
+    files: <Files me={me} notify={notify} />,
     news: <News me={me} notify={notify} />,
     group: <Group me={me} onLogout={onLogout} onRefresh={onRefresh} notify={notify} />,
   };

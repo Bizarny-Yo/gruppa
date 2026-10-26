@@ -1,5 +1,9 @@
 import { Router } from "express";
-import { db, nowIso, isEmpty, makeGroup, seedDemo, pairTimes, getSetting } from "./db.js";
+import express from "express";
+import { writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { join, extname } from "node:path";
+import { randomBytes } from "node:crypto";
+import { db, nowIso, isEmpty, makeGroup, seedDemo, pairTimes, getSetting, UPLOADS_DIR } from "./db.js";
 import {
   hashPassword, verifyPassword, createSession, destroySession,
   userFromRequest, requireAuth, requireAdmin, sessionCookie, clearCookie, parseCookies, isSecureRequest,
@@ -810,6 +814,124 @@ api.post("/homework/:id/toggle", requireAuth, (req, res) => {
   const count = db.prepare("SELECT COUNT(*) AS n FROM homework_done WHERE homework_id = ?").get(id).n;
   broadcast(req.user.groupId, "homework", { id, doneCount: count });
   res.json({ ok: true, mine: !done, doneCount: count });
+});
+
+/* ───────────────────────── полезные файлы ───────────────────────── */
+
+const ALLOWED_EXT = new Set([
+  ".pdf", ".djvu", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx",
+  ".txt", ".md", ".rtf", ".csv", ".zip", ".rar", ".7z",
+  ".png", ".jpg", ".jpeg", ".webp",
+]);
+
+const fileRow = (id, groupId) =>
+  db
+    .prepare(
+      `SELECT f.*, u.name AS uploader_name, s.name AS subject, s.color
+       FROM files f
+       LEFT JOIN users u ON u.id = f.uploader_id
+       LEFT JOIN subjects s ON s.id = f.subject_id
+       WHERE f.id = ? AND f.group_id = ?`
+    )
+    .get(id, groupId);
+
+api.get("/files", requireAuth, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT f.id, f.name, f.mime, f.size, f.created_at, f.subject_id, f.uploader_id,
+              u.name AS uploader_name, s.name AS subject, s.color
+       FROM files f
+       LEFT JOIN users u ON u.id = f.uploader_id
+       LEFT JOIN subjects s ON s.id = f.subject_id
+       WHERE f.group_id = ?
+       ORDER BY f.created_at DESC`
+    )
+    .all(req.user.groupId);
+  res.json(rows);
+});
+
+api.post("/files", requireAuth, express.raw({ type: () => true, limit: "40mb" }), (req, res) => {
+  const rawName = String(req.query.name ?? "").trim();
+  if (!rawName) return res.status(400).json({ error: "Не передано имя файла" });
+
+  const ext = extname(rawName).toLowerCase();
+  if (!ALLOWED_EXT.has(ext)) {
+    return res.status(400).json({ error: `Тип ${ext || "без расширения"} не поддерживается` });
+  }
+
+  const body = req.body;
+  if (!Buffer.isBuffer(body) || body.length === 0) {
+    return res.status(400).json({ error: "Пустой файл" });
+  }
+
+  let subjectId = null;
+  if (req.query.subjectId) {
+    const subject = db
+      .prepare("SELECT id FROM subjects WHERE id = ? AND group_id = ?")
+      .get(Number(req.query.subjectId), req.user.groupId);
+    if (!subject) return res.status(400).json({ error: "Предмет не найден" });
+    subjectId = subject.id;
+  }
+
+  const safeName = rawName.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120);
+  const storedName = `${randomBytes(16).toString("hex")}${ext}`;
+  writeFileSync(join(UPLOADS_DIR, storedName), body);
+
+  const r = db
+    .prepare(
+      `INSERT INTO files (group_id, subject_id, uploader_id, name, stored_name, mime, size, created_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    )
+    .run(
+      req.user.groupId,
+      subjectId,
+      req.user.id,
+      safeName,
+      storedName,
+      String(req.headers["content-type"] ?? "application/octet-stream").slice(0, 120),
+      body.length,
+      nowIso()
+    );
+
+  const row = fileRow(Number(r.lastInsertRowid), req.user.groupId);
+  broadcast(req.user.groupId, "files", row);
+  res.status(201).json(row);
+});
+
+api.get("/files/:id/download", requireAuth, (req, res) => {
+  const f = db
+    .prepare("SELECT * FROM files WHERE id = ? AND group_id = ?")
+    .get(Number(req.params.id), req.user.groupId);
+  if (!f) return res.status(404).json({ error: "Файл не найден" });
+
+  const full = join(UPLOADS_DIR, f.stored_name);
+  if (!existsSync(full)) return res.status(410).json({ error: "Файл потерян на диске" });
+
+  res.setHeader("content-type", f.mime || "application/octet-stream");
+  res.setHeader(
+    "content-disposition",
+    `attachment; filename="file${extname(f.name)}"; filename*=UTF-8''${encodeURIComponent(f.name)}`
+  );
+  res.sendFile(full);
+});
+
+api.delete("/files/:id", requireAuth, (req, res) => {
+  const f = db
+    .prepare("SELECT * FROM files WHERE id = ? AND group_id = ?")
+    .get(Number(req.params.id), req.user.groupId);
+  if (!f) return res.status(404).json({ error: "Файл не найден" });
+
+  if (req.user.role !== "starosta" && f.uploader_id !== req.user.id) {
+    return res.status(403).json({ error: "Удалить может автор или староста" });
+  }
+
+  try {
+    unlinkSync(join(UPLOADS_DIR, f.stored_name));
+  } catch {
+    /* уже нет на диске */
+  }
+  db.prepare("DELETE FROM files WHERE id = ?").run(f.id);
+  res.json({ ok: true });
 });
 
 /* ───────────────────────── админ: расписание ───────────────────────── */
