@@ -143,6 +143,18 @@ CREATE TABLE IF NOT EXISTS files (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS bans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  name_key TEXT NOT NULL,
+  banned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (group_id, name_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_bans_group ON bans(group_id);
+
 CREATE INDEX IF NOT EXISTS idx_files_group ON files(group_id, subject_id);
 
 CREATE INDEX IF NOT EXISTS idx_homework_group ON homework(group_id);

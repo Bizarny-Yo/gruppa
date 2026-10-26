@@ -8,6 +8,7 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
   const members = useFetch(() => get("/members"), []);
   const subjects = useFetch(() => get("/subjects"), []);
   const subgroups = useFetch(() => get("/subgroups"), []);
+  const bans = useFetch(() => get("/bans"), []);
   const [sheet, setSheet] = useState(null); // "slot" | "subject"
   const [nameSheet, setNameSheet] = useState(false);
   const [nameValue, setNameValue] = useState(me.user.name);
@@ -47,10 +48,21 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
     if (!removing) return;
     try {
       await del(`/members/${removing.id}`);
-      notify(`${removing.name} удалён из группы`);
+      notify(`${removing.name} исключён и заблокирован`);
       setRemoving(null);
       members.reload();
+      bans.reload();
       onRefresh?.();
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  async function unban(id, name) {
+    try {
+      await del(`/bans/${id}`);
+      bans.reload();
+      notify(`${name} разблокирован`);
     } catch (err) {
       notify(err.message, "err");
     }
@@ -209,22 +221,70 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
         )}
       </div>
 
-      <Sheet open={Boolean(removing)} onClose={() => setRemoving(null)} title="Удалить из группы">
+      {isAdmin && (
+        <div className="section">
+          <div className="section-head">
+            <h2>Чёрный список</h2>
+            <span className="tiny muted">{(bans.data ?? []).length || "пусто"}</span>
+          </div>
+
+          {(bans.data ?? []).length === 0 ? (
+            <div className="tiny muted" style={{ padding: "2px 2px 6px" }}>
+              Сюда попадают исключённые — зайти снова они не смогут, пока ты не разбанишь
+            </div>
+          ) : (
+            <div className="card" style={{ padding: "4px 14px" }}>
+              {(bans.data ?? []).map((b) => (
+                <div key={b.id} className="person">
+                  <span
+                    className="file-icon"
+                    style={{
+                      background: "rgb(255 107 107 / 10%)",
+                      borderColor: "rgb(255 107 107 / 25%)",
+                      color: "var(--bad)",
+                    }}
+                  >
+                    <Icon name="x" size={15} />
+                  </span>
+
+                  <div className="who-name">
+                    <strong>{b.name}</strong>
+                    <span>
+                      исключён{" "}
+                      {new Date(b.created_at).toLocaleDateString("ru-RU", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </span>
+                  </div>
+
+                  <button type="button" className="btn sm ghost" onClick={() => unban(b.id, b.name)}>
+                    разбанить
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Sheet open={Boolean(removing)} onClose={() => setRemoving(null)} title="Исключить из группы">
         {removing && (
           <>
             <p style={{ marginTop: 0, fontSize: 14 }}>
-              <strong>{removing.name}</strong> выйдет из группы. Вместе с ним удалятся его отметки
-              посещаемости и подписка на уведомления — вернуть нельзя.
+              <strong>{removing.name}</strong> выйдет из группы и попадёт в <strong>чёрный список</strong>:
+              зарегистрироваться заново с этим именем он не сможет.
             </p>
             <p className="tiny muted">
-              Если это ошибка — человек сможет зарегистрироваться заново по коду {me.group.code}.
+              Вместе с ним удалятся его отметки и подписка на уведомления. Снять блокировку можно
+              в разделе «Чёрный список» ниже.
             </p>
             <div className="row" style={{ gap: 10, marginTop: 8 }}>
               <button type="button" className="btn ghost" style={{ flex: 1 }} onClick={() => setRemoving(null)}>
                 Отмена
               </button>
               <button type="button" className="btn danger" style={{ flex: 1 }} onClick={removeMember}>
-                Удалить
+                Исключить
               </button>
             </div>
           </>

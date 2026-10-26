@@ -205,6 +205,13 @@ api.post("/auth/register", (req, res) => {
   const group = db.prepare("SELECT * FROM groups WHERE code = ?").get(String(code).trim().toUpperCase());
   if (!group) return res.status(404).json({ error: "Группа с таким кодом не найдена" });
 
+  const banned = db
+    .prepare("SELECT 1 FROM bans WHERE group_id = ? AND name_key = ?")
+    .get(group.id, name.trim().toLowerCase());
+  if (banned) {
+    return res.status(403).json({ error: "Тебя исключили из этой группы. Обратись к старосте." });
+  }
+
   const exists = db
     .prepare("SELECT id FROM users WHERE group_id = ? AND lower(name) = lower(?)")
     .get(group.id, name.trim());
@@ -311,9 +318,38 @@ api.delete("/members/:id", requireAdmin, (req, res) => {
   if (!target) return res.status(404).json({ error: "Такого участника нет" });
   if (target.role === "starosta") return res.status(403).json({ error: "Нельзя удалить старосту" });
 
+  db.prepare(
+    `INSERT INTO bans (group_id, name, name_key, banned_by, created_at)
+     VALUES (?,?,?,?,?)
+     ON CONFLICT(group_id, name_key)
+     DO UPDATE SET name = excluded.name, banned_by = excluded.banned_by, created_at = excluded.created_at`
+  ).run(req.user.groupId, target.name, target.name.trim().toLowerCase(), req.user.id, nowIso());
+
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
   broadcast(req.user.groupId, "roster", { reason: "removed", userId: id });
-  res.json({ ok: true, removed: target.name });
+  res.json({ ok: true, removed: target.name, banned: true });
+});
+
+/* ───────────────────────── чёрный список ───────────────────────── */
+
+api.get("/bans", requireAdmin, (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT b.id, b.name, b.created_at, u.name AS banned_by_name
+         FROM bans b LEFT JOIN users u ON u.id = b.banned_by
+         WHERE b.group_id = ? ORDER BY b.created_at DESC`
+      )
+      .all(req.user.groupId)
+  );
+});
+
+api.delete("/bans/:id", requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM bans WHERE id = ? AND group_id = ?").run(
+    Number(req.params.id),
+    req.user.groupId
+  );
+  res.json({ ok: true });
 });
 
 api.get("/subgroups", requireAuth, (req, res) => {
