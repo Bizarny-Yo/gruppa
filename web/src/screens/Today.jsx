@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { get, post, subscribe, STATUS } from "../api.js";
-import { useFetch, Icon, Spinner, ErrorBox, Empty } from "../ui.jsx";
+import { useFetch, Icon, Spinner, ErrorBox, Empty, Sheet } from "../ui.jsx";
 import LessonCard from "../LessonCard.jsx";
 import StatusOptions from "../StatusOptions.jsx";
 import { go } from "../router.js";
@@ -26,6 +26,7 @@ export default function Today({ notify }) {
   const { data, loading, error, reload } = useFetch(() => get("/today"), []);
   const deadlines = useFetch(() => get("/deadlines"), []);
   const [now, setNow] = useState(() => Date.now());
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -43,6 +44,17 @@ export default function Today({ notify }) {
     try {
       await post("/attendance", { slotId: lesson.slotId, date: lesson.date, status });
       notify(`Отмечено: ${STATUS[status].label}`);
+      reload();
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  async function markAll(status) {
+    try {
+      const r = await post("/attendance/day", { date: data.today.date, status });
+      setBulkOpen(false);
+      notify(`Отмечено пар: ${r.count}`);
       reload();
     } catch (err) {
       notify(err.message, "err");
@@ -156,9 +168,16 @@ export default function Today({ notify }) {
       <div className="section">
         <div className="section-head">
           <h2>Расписание дня</h2>
-          <button type="button" className="link" onClick={() => go("/week")}>
-            вся неделя
-          </button>
+          <div className="row" style={{ gap: 12 }}>
+            {lessons.length > 0 && (
+              <button type="button" className="link" onClick={() => setBulkOpen(true)}>
+                отметить всё
+              </button>
+            )}
+            <button type="button" className="link" onClick={() => go("/week")}>
+              вся неделя
+            </button>
+          </div>
         </div>
 
         {lessons.length === 0 ? (
@@ -171,6 +190,13 @@ export default function Today({ notify }) {
           </div>
         )}
       </div>
+      <Sheet open={bulkOpen} onClose={() => setBulkOpen(false)} title="Отметить все пары">
+        <p className="tiny muted" style={{ marginTop: 0 }}>
+          Применится сразу к {lessons.length} {lessons.length === 1 ? "паре" : "парам"} этого дня.
+          Отдельные пары потом можно поправить.
+        </p>
+        <StatusOptions value={null} onChange={markAll} />
+      </Sheet>
     </>
   );
 }

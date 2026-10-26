@@ -419,6 +419,34 @@ api.post("/attendance", requireAuth, (req, res) => {
   res.json({ ok: true, slotId: slot.id, date, status, counts });
 });
 
+/** Отметить все пары дня одной кнопкой */
+api.post("/attendance/day", requireAuth, (req, res) => {
+  const { date, status } = req.body ?? {};
+  if (!STATUSES.includes(status)) return res.status(400).json({ error: "Неверный статус" });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date ?? ""))) return res.status(400).json({ error: "Неверная дата" });
+
+  if (date < todayIso() && req.user.role !== "starosta") {
+    return res.status(403).json({ error: "Прошедшие пары отмечает староста" });
+  }
+
+  const slots = slotsForDate(req.user.groupId, date, req.user.subgroup);
+  if (!slots.length) return res.status(400).json({ error: "В этот день нет пар" });
+
+  const upsert = db.prepare(
+    `INSERT INTO attendance (slot_id, date, user_id, status, marked_at) VALUES (?,?,?,?,?)
+     ON CONFLICT (slot_id, date, user_id) DO UPDATE SET status = excluded.status, marked_at = excluded.marked_at`
+  );
+
+  const markedAt = nowIso();
+  for (const slot of slots) upsert.run(slot.id, date, req.user.id, status, markedAt);
+
+  broadcast(req.user.groupId, "attendance", {
+    bulk: true, date, userId: req.user.id, status, slotIds: slots.map((s) => s.id),
+  });
+
+  res.json({ ok: true, count: slots.length, date, status });
+});
+
 api.get("/attendance/:slotId", requireAuth, (req, res) => {
   const slotId = Number(req.params.slotId);
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date ?? "")) ? req.query.date : todayIso();

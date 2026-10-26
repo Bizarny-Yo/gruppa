@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { get } from "../api.js";
-import { useFetch, Icon, Spinner, ErrorBox, Empty } from "../ui.jsx";
+import { get, post } from "../api.js";
+import { useFetch, Icon, Spinner, ErrorBox, Empty, Sheet } from "../ui.jsx";
 import LessonCard from "../LessonCard.jsx";
+import StatusOptions from "../StatusOptions.jsx";
 import { go } from "../router.js";
 import { addDays, todayIso, dayNumber, monthShort, WEEKDAYS_SHORT } from "../dates.js";
 import { plural } from "./Today.jsx";
 
-export default function Week() {
+export default function Week({ notify }) {
   const [anchor, setAnchor] = useState(() => todayIso());
   const [selected, setSelected] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const { data, loading, error, reload } = useFetch(() => get(`/schedule?week=${anchor}`), [anchor]);
 
   const days = data?.week ?? [];
@@ -16,6 +18,17 @@ export default function Week() {
   const active = days.find((d) => d.date === selected) ?? days.find((d) => d.date === today) ?? days[0];
 
   const total = days.reduce((sum, d) => sum + d.lessons.length, 0);
+
+  async function markAll(status) {
+    try {
+      const r = await post("/attendance/day", { date: active.date, status });
+      setBulkOpen(false);
+      notify?.(`Отмечено пар: ${r.count}`);
+      reload();
+    } catch (err) {
+      notify?.(err.message, "err");
+    }
+  }
 
   return (
     <>
@@ -65,7 +78,16 @@ export default function Week() {
               <strong style={{ fontSize: 14 }}>
                 {WEEKDAYS_SHORT[(active.weekday ?? 1) - 1]}, {dayNumber(active.date)} {monthShort(active.date)}
               </strong>
-              <span className="tiny muted">{active.lessons.length || "нет"} {plural(active.lessons.length, "пара", "пары", "пар")}</span>
+              <div className="row" style={{ gap: 12 }}>
+                {active.lessons.length > 0 && (
+                  <button type="button" className="link" onClick={() => setBulkOpen(true)}>
+                    отметить всё
+                  </button>
+                )}
+                <span className="tiny muted">
+                  {active.lessons.length || "нет"} {plural(active.lessons.length, "пара", "пары", "пар")}
+                </span>
+              </div>
             </div>
           )}
 
@@ -80,6 +102,17 @@ export default function Week() {
           )}
         </>
       )}
+      <Sheet open={bulkOpen} onClose={() => setBulkOpen(false)} title="Отметить все пары">
+        {active && (
+          <>
+            <p className="tiny muted" style={{ marginTop: 0 }}>
+              Применится к {active.lessons.length} {plural(active.lessons.length, "паре", "парам", "парам")} —
+              {" "}{dayNumber(active.date)} {monthShort(active.date)}.
+            </p>
+            <StatusOptions value={null} onChange={markAll} />
+          </>
+        )}
+      </Sheet>
     </>
   );
 }
