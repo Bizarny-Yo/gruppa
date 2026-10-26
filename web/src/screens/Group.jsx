@@ -15,6 +15,31 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
   const [savingName, setSavingName] = useState(false);
   const [selectedSubgroup, setSelectedSubgroup] = useState(me.user.subgroup ?? null);
   const [removing, setRemoving] = useState(null);
+  const [codeSheet, setCodeSheet] = useState(false);
+  const [codeValue, setCodeValue] = useState(me.group.code);
+  const [savingCode, setSavingCode] = useState(false);
+
+  async function saveCode(e) {
+    e.preventDefault();
+    setSavingCode(true);
+    try {
+      const r = await patch("/group", { code: codeValue.trim() });
+      setCodeSheet(false);
+      notify(`Новый код: ${r.code}`);
+      onRefresh?.();
+    } catch (err) {
+      notify(err.message, "err");
+    } finally {
+      setSavingCode(false);
+    }
+  }
+
+  function randomCode() {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let out = "";
+    for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    setCodeValue(out);
+  }
   const isAdmin = me.user.role === "starosta";
 
   useEffect(() => {
@@ -184,8 +209,15 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
             <a className="btn" href="/api/export/attendance.csv" download>
               <Icon name="download" size={16} /> Excel/CSV
             </a>
-            <button type="button" className="btn ghost" onClick={() => notify("Скоро: перенос пары в один тап")}>
-              <Icon name="spark" size={16} /> Ещё
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setCodeValue(me.group.code);
+                setCodeSheet(true);
+              }}
+            >
+              <Icon name="settings" size={16} /> Код
             </button>
           </div>
         </div>
@@ -289,6 +321,40 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
             </div>
           </>
         )}
+      </Sheet>
+
+      <Sheet open={codeSheet} onClose={() => setCodeSheet(false)} title="Код группы">
+        <form onSubmit={saveCode}>
+          <p className="tiny muted" style={{ marginTop: 0 }}>
+            Кто знает код — может вступить в группу и видеть состав. Если код совпадает с номером
+            группы, его знает любой в вузе. Смени на случайный.
+          </p>
+
+          <div className="field">
+            <label htmlFor="groupcode">Код для вступления</label>
+            <input
+              id="groupcode"
+              value={codeValue}
+              onChange={(e) => setCodeValue(e.target.value.toUpperCase())}
+              maxLength={20}
+              required
+            />
+            <span className="hint">3–20 символов: буквы, цифры, дефис</span>
+          </div>
+
+          <button type="button" className="btn ghost block" onClick={randomCode} style={{ marginBottom: 10 }}>
+            <Icon name="spark" size={15} /> Сгенерировать случайный
+          </button>
+
+          <button type="submit" className="btn primary block" disabled={savingCode}>
+            {savingCode ? "Сохраняем…" : "Сохранить код"}
+          </button>
+
+          <p className="tiny" style={{ color: "var(--warn)", marginBottom: 0, marginTop: 12 }}>
+            Код нужен при каждом входе. Сообщи новый код группе — иначе они не смогут зайти снова.
+            У тех, кто уже вошёл, сессия не слетит.
+          </p>
+        </form>
       </Sheet>
 
       <Sheet open={nameSheet} onClose={() => setNameSheet(false)} title="Изменить имя">

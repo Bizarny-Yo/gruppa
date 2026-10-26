@@ -138,7 +138,7 @@ export default function Auth({ onAuth }) {
             <div className="tiny muted">
               {mode === "create"
                 ? "Ты станешь старостой новой группы"
-                : "Код группы спроси у старосты — 05-605"}
+                : "Код группы спроси у старосты"}
             </div>
           </div>
           <button

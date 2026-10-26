@@ -427,6 +427,23 @@ api.post("/groups", (req, res) => {
   res.status(201).json({ ok: true, group: { id: groupId, name: groupName.trim(), code: cleanCode }, user: userPublic(user) });
 });
 
+/** Смена кода группы: закрывает доступ посторонним, кто знает номер группы */
+api.patch("/group", requireAdmin, (req, res) => {
+  const code = String(req.body?.code ?? "").trim().toUpperCase();
+
+  if (!/^[A-ZА-ЯЁ0-9-]{3,20}$/.test(code)) {
+    return res.status(400).json({ error: "Код: 3–20 символов, буквы, цифры или дефис" });
+  }
+
+  const taken = db
+    .prepare("SELECT id FROM groups WHERE code = ? AND id <> ?")
+    .get(code, req.user.groupId);
+  if (taken) return res.status(409).json({ error: "Такой код уже занят другой группой" });
+
+  db.prepare("UPDATE groups SET code = ? WHERE id = ?").run(code, req.user.groupId);
+  res.json({ ok: true, code });
+});
+
 /* ───────────────────────── расписание ───────────────────────── */
 
 function schedulePayload(user, dates) {
