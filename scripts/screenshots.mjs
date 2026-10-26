@@ -22,6 +22,7 @@ const mobile = await browser.newContext({
   timezoneId: "Europe/Moscow",
   isMobile: true,
   hasTouch: true,
+  permissions: ["notifications"],
 });
 
 const page = await mobile.newPage();
@@ -77,6 +78,9 @@ console.log("→ группа");
 await tab("Группа").click();
 await page.waitForSelector(".code-pill");
 await shot("09-group");
+await page.locator(".switch").scrollIntoViewIfNeeded();
+await page.evaluate(() => window.scrollBy(0, -120));
+await shot("10-notifications");
 
 console.log("→ отметка через UI");
 await tab("Сегодня").click();
@@ -85,7 +89,7 @@ const goingBtn = page.locator(".option", { hasText: "Иду" }).first();
 if (await goingBtn.count()) {
   await goingBtn.click();
   await page.waitForTimeout(800);
-  await shot("10-marked");
+  await shot("12-marked");
 }
 
 console.log("→ десктоп");

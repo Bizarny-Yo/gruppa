@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { api, sseHandler } from "./api.js";
 import { isEmpty, seedDemo } from "./db.js";
 import { hashPassword } from "./auth.js";
+import { startReminders } from "./push.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC = join(ROOT, "public");
@@ -61,4 +62,5 @@ if (isEmpty() && process.env.SEED_DEMO !== "0") {
 
 app.listen(PORT, HOST, () => {
   console.log(`gruppa listening on http://127.0.0.1:${PORT} (host ${HOST})`);
+  startReminders();
 });

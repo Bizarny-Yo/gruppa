@@ -14,6 +14,7 @@ live-список «кто идёт» и статистика. Тёмная те
 - **Статистика** — процент посещаемости, разбивка по предметам, серия дней без пропусков
 - **Староста** — видит всю группу, должников, добавляет пары и предметы, экспортирует CSV
 - **Новости и дедлайны** — объявления от старосты, даты сдачи
+- **Уведомления** — Web Push: напоминание за 15 минут до пары, если не отметился; push об объявлениях
 - **PWA** — устанавливается на телефон, иконки, автономный режим оболочки
 
 ## Запуск
@@ -59,6 +60,10 @@ pnpm exec vite                 # UI на :5173 с прокси на API
 |---|---|
 | ![Новости](docs/screens/08-news.png) | ![Группа](docs/screens/09-group.png) |
 
+| Уведомления | Отметка |
+|---|---|
+| ![Уведомления](docs/screens/10-notifications.png) | ![Отметка](docs/screens/12-marked.png) |
+
 ![Десктоп](docs/screens/11-desktop.png)
 
 ## API
@@ -76,6 +81,9 @@ pnpm exec vite                 # UI на :5173 с прокси на API
 | GET | `/api/stats/me` · `/api/stats/group` | статистика |
 | GET | `/api/announcements` · `/api/deadlines` | новости |
 | GET | `/api/export/attendance.csv` | экспорт (староста) |
+| GET | `/api/push/key` | публичный VAPID-ключ |
+| POST | `/api/push/subscribe` | подписка на уведомления |
+| POST | `/api/push/test` | тестовое уведомление |
 | GET | `/api/events` | SSE-поток live-обновлений |
 
 ## Проверка
@@ -88,16 +96,45 @@ node scripts/make-icons.py      # перегенерировать PWA-икон�
 
 ## Деплой
 
-Любой хостинг с Node 22+ (Render, Railway, Fly.io):
+### Показать группе прямо сейчас — 0 ₽
+
+**Туннель** (публичная HTTPS-ссылка, без аккаунта):
+
+```powershell
+winget install Cloudflare.cloudflared
+powershell -ExecutionPolicy Bypass -File scripts/tunnel.ps1
+```
+
+Ссылка вида `https://xxx.trycloudflare.com` живёт, пока открыто окно. **Прокси/VPN нужно выключить**,
+иначе Cloudflare рвёт соединение (`failed to request quick Tunnel: EOF`).
+
+**Локальная сеть** — если телефон в той же Wi-Fi:
 
 ```
-Build:  pnpm install && pnpm build
-Start:  node server/index.js
+http://<IP-компьютера>:47824
 ```
 
-База — файл `data/gruppa.db`. Для бесплатных тарифов с эфемерным диском данные живут
-до перезапуска; для постоянного хранения подключите диск или переведите слой `server/db.js`
-на Postgres.
+Windows спросит про доступ к сети — надо разрешить (или добавить правило для порта 47824).
+
+### Постоянный хостинг
+
+| Вариант | Цена | Диск | Нюанс |
+|---|---|---|---|
+| Oracle Cloud Always Free | 0 ₽ | есть | нужна карта для верификации, ARM-виртуалка |
+| Render free | 0 ₽ | **нет** | засыпает через ~15 мин, база теряется при рестарте |
+| Render + Neon Postgres | 0 ₽ | внешняя БД | нужна миграция слой `server/db.js` на Postgres |
+| VPS (Timeweb, Aeza, Hetzner) | 150–300 ₽/мес | есть | самый простой и предсказуемый путь |
+
+**Docker** (работает на любом VPS):
+
+```bash
+docker build -t gruppa .
+docker run -d -p 8080:8080 -v gruppa-data:/data --name gruppa gruppa
+```
+
+**Render** — в репозитории есть `render.yaml`, но на free-плане без диска данные не переживут
+рестарт. Для настоящей группы выбирайте вариант с диском.
+
 
 ## Структура
 

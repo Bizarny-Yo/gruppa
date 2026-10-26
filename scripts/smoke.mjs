@@ -215,6 +215,44 @@ section("Роли и регистрация");
   cookie = prevCookie;
 }
 
+section("Push-уведомления");
+{
+  const key = await call("/api/push/key");
+  check("GET /api/push/key → публичный ключ", key.status === 200 && key.json?.publicKey?.length > 60);
+
+  const before = await call("/api/push/status");
+  check("GET /api/push/status → 200", before.status === 200);
+
+  const fake = {
+    endpoint: `https://fcm.googleapis.com/fcm/send/smoke-${Date.now()}`,
+    keys: {
+      p256dh: "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM",
+      auth: "tBHItJI5svbpez7KI4CCXg",
+    },
+  };
+
+  const sub = await call("/api/push/subscribe", { method: "POST", body: { subscription: fake } });
+  check("POST /api/push/subscribe → 201", sub.status === 201, JSON.stringify(sub.json));
+
+  const after = await call("/api/push/status");
+  check("подписка видна в статусе", after.json?.subscribed === true);
+
+  const bad = await call("/api/push/subscribe", { method: "POST", body: { subscription: { endpoint: "x" } } });
+  check("битая подписка → 400", bad.status === 400);
+
+  const test = await call("/api/push/test", { method: "POST", body: {} });
+  check("POST /api/push/test → 200", test.status === 200);
+
+  const un = await call("/api/push/unsubscribe", { method: "POST", body: { endpoint: fake.endpoint } });
+  check("POST /api/push/unsubscribe → 200", un.status === 200);
+
+  const final = await call("/api/push/status");
+  check("подписка удалена", final.json?.subscribed === false);
+
+  const anon = await call("/api/push/status", { auth: false });
+  check("аноним не видит статус push → 401", anon.status === 401);
+}
+
 section("Безопасность");
 {
   const wrong = await call("/api/auth/login", {

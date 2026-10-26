@@ -86,8 +86,31 @@ CREATE TABLE IF NOT EXISTS deadlines (
   created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_slots_group ON slots(group_id, weekday);
-CREATE INDEX IF NOT EXISTS idx_att_slot_date ON attendance(slot_id, date);
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS push_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  slot_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  sent_at TEXT NOT NULL,
+  UNIQUE (user_id, slot_id, date, kind)
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_slots_group ON slots(group_id, weekday);CREATE INDEX IF NOT EXISTS idx_att_slot_date ON attendance(slot_id, date);
 CREATE INDEX IF NOT EXISTS idx_att_user ON attendance(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `);

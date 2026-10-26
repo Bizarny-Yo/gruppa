@@ -1,0 +1,18 @@
+# Render blueprint: бесплатный веб-сервис.
+# Внимание: на free-плане нет постоянного диска — база обнулится при рестарте.
+# Для сохранности данных нужен план с диском или внешний Postgres (см. README).
+
+services:
+  - type: web
+    name: gruppa
+    runtime: node
+    plan: free
+    buildCommand: npm install -g pnpm && pnpm install && pnpm build
+    startCommand: node server/index.js
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: SEED_DEMO
+        value: "0"
+      - key: VAPID_SUBJECT
+        value: mailto:starosta@example.com

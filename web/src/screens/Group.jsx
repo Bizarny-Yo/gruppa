@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { get, post } from "../api.js";
 import { useFetch, Icon, Avatar, Sheet, Spinner, ErrorBox } from "../ui.jsx";
+import PushToggle from "../PushToggle.jsx";
 import { WEEKDAYS_SHORT } from "../dates.js";
 
 export default function Group({ me, onLogout, notify }) {
@@ -47,13 +48,16 @@ export default function Group({ me, onLogout, notify }) {
         </div>
       </section>
 
+      <div className="section">
+        <PushToggle notify={notify} />
+      </div>
+
       {isAdmin && (
         <div className="section">
           <div className="section-head">
             <h2>Управление</h2>
             <span className="tiny muted">только староста</span>
-          </div>
-          <div className="grid-2">
+          </div>          <div className="grid-2">
             <button type="button" className="btn" onClick={() => setSheet("slot")}>
               <Icon name="plus" size={16} /> Пара
             </button>

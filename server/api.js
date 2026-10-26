@@ -5,6 +5,9 @@ import {
   userFromRequest, requireAuth, requireAdmin, sessionCookie, clearCookie, parseCookies,
 } from "./auth.js";
 import {
+  publicKey, saveSubscription, removeSubscription, sendTest, sendToGroup, userHasSubscription,
+} from "./push.js";
+import {
   todayIso, weekdayOf, parityOf, parseIso, weekDays, toIso, addDays,
   minutesOf, nowMinutes, formatDateRu,
 } from "./time.js";
@@ -442,6 +445,15 @@ api.post("/announcements", requireAdmin, (req, res) => {
     .run(req.user.groupId, req.user.id, title.trim(), String(body ?? "").trim(), pinned ? 1 : 0, nowIso());
   const row = db.prepare("SELECT * FROM announcements WHERE id = ?").get(Number(r.lastInsertRowid));
   broadcast(req.user.groupId, "announcement", row);
+
+  // push всей группе — не блокируем ответ
+  sendToGroup(req.user.groupId, {
+    title: `${row.pinned ? "📌 " : ""}${row.title}`,
+    body: row.body || "Новое объявление от старосты",
+    url: "/news",
+    tag: `announcement-${row.id}`,
+  }).catch(() => {});
+
   res.status(201).json(row);
 });
 
@@ -536,6 +548,35 @@ api.get("/export/attendance.csv", requireAdmin, (req, res) => {
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", `attachment; filename="attendance_${from}_${to}.csv"`);
   res.send("\uFEFF" + lines.join("\r\n"));
+});
+
+/* ───────────────────────── push-уведомления ───────────────────────── */
+
+api.get("/push/key", (req, res) => {
+  res.json({ publicKey: publicKey() });
+});
+
+api.get("/push/status", requireAuth, (req, res) => {
+  res.json({ subscribed: userHasSubscription(req.user.id) });
+});
+
+api.post("/push/subscribe", requireAuth, (req, res) => {
+  try {
+    saveSubscription(req.user.id, req.body?.subscription);
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+api.post("/push/unsubscribe", requireAuth, (req, res) => {
+  if (req.body?.endpoint) removeSubscription(req.body.endpoint);
+  res.json({ ok: true });
+});
+
+api.post("/push/test", requireAuth, async (req, res) => {
+  const sent = await sendTest(req.user.id);
+  res.json({ ok: true, sent });
 });
 
 /* ─────────────────────────── демо ─────────────────────────── */
