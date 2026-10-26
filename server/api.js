@@ -12,7 +12,7 @@ import {
   publicKey, saveSubscription, removeSubscription, sendTest, sendToGroup, userHasSubscription,
 } from "./push.js";
 import {
-  todayIso, weekdayOf, parityOf, parityFor, parseIso, weekDays, toIso, addDays,
+  todayIso, weekdayOf, parityOf, parityFor, academicWeek, parseIso, weekDays, toIso, addDays,
   minutesOf, nowMinutes, formatDateRu,
 } from "./time.js";
 
@@ -285,6 +285,7 @@ api.get("/me", (req, res) => {
       program: group.program ?? null, profile: group.profile ?? null,
     },
     parity: parityOn(new Date()),
+    week: academicWeek(new Date(), getSetting("semester_start", null)),
     counts: {
       going: my.going ?? 0, late: my.late ?? 0,
       absent: my.absent ?? 0, sick: my.sick ?? 0,
