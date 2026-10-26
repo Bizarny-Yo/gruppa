@@ -596,8 +596,8 @@ function SlotForm({ subjects, onDone, notify }) {
           <label>Неделя</label>
           <select value={form.parity} onChange={(e) => setForm({ ...form, parity: e.target.value })}>
             <option value="all">каждую</option>
-            <option value="odd">числитель</option>
-            <option value="even">знаменатель</option>
+            <option value="odd">нечётная</option>
+            <option value="even">чётная</option>
           </select>
         </div>
       </div>

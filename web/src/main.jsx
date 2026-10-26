@@ -86,28 +86,28 @@ function Shell({ me, onLogout, onRefresh }) {
         <Sheet open={parityOpen} onClose={() => setParityOpen(false)} title="Учебная неделя">
           <p style={{ marginTop: 0, fontSize: 14 }}>
             Идёт <strong>{me.week}-я учебная неделя</strong> —{" "}
-            <strong>{me.parity === "even" ? "знаменатель" : "числитель"}</strong>.
+            <strong>{me.parity === "even" ? "чётная" : "нечётная"}</strong>.
           </p>
 
           <p className="tiny muted">
-            В вузовском расписании часть пар стоит только на чётных или только на нечётных неделях:
+            Часть пар идёт не каждую неделю, а через одну:
           </p>
 
           <div className="card" style={{ background: "var(--bg-2)", padding: 12, margin: "8px 0" }}>
             <div className="row between" style={{ fontSize: 13 }}>
-              <span>Числитель</span>
-              <span className="muted">нечётные недели (1, 3, 5…)</span>
+              <span>Нечётная неделя</span>
+              <span className="muted">1, 3, 5, 7…</span>
             </div>
             <div className="row between" style={{ fontSize: 13, marginTop: 6 }}>
-              <span>Знаменатель</span>
-              <span className="muted">чётные недели (2, 4, 6…)</span>
+              <span>Чётная неделя</span>
+              <span className="muted">2, 4, 6, 8…</span>
             </div>
           </div>
 
           <p className="tiny muted" style={{ marginBottom: 0 }}>
             Отсчёт идёт от начала семестра, а не от календаря — поэтому номер недели может
-            не совпадать с тем, что видно в других сервисах. Пары с пометкой «числитель» или
-            «знаменатель» показываются только в свою неделю.
+            не совпадать с тем, что видно в других сервисах. Пара с пометкой «чётная» или
+            «нечётная» показывается только в свою неделю.
           </p>
         </Sheet>
 
@@ -126,7 +126,7 @@ function ParityBadge({ parity, onClick }) {
       onClick={onClick}
       title="Чётность учебной недели — нажми, чтобы узнать подробнее"
     >
-      {even ? "знаменатель" : "числитель"}
+      {even ? "чётная" : "нечётная"}
       <Icon name="right" size={11} />
     </button>
   );

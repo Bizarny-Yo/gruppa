@@ -1,7 +1,7 @@
 import { Icon } from "./ui.jsx";
 import { STATUS } from "./api.js";
 
-const PARITY_LABEL = { odd: "числитель", even: "знаменатель" };
+const PARITY_LABEL = { odd: "нечётная", even: "чётная" };
 
 export default function LessonCard({ lesson, onOpen, showParity = false }) {
   const st = lesson.myStatus ? STATUS[lesson.myStatus] : null;
