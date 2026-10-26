@@ -10,7 +10,10 @@ import { mkdirSync } from "node:fs";
 
 const BASE = process.argv[2] ?? "http://127.0.0.1:47824";
 const OUT = "shots";
+const SHOT_COOKIE = process.env.SHOT_COOKIE ?? "";
 mkdirSync(OUT, { recursive: true });
+
+const cookieFor = (url) => ({ name: "sid", value: SHOT_COOKIE, domain: new URL(url).hostname, path: "/" });
 
 const errors = [];
 
@@ -24,6 +27,8 @@ const mobile = await browser.newContext({
   hasTouch: true,
   permissions: ["notifications"],
 });
+
+if (SHOT_COOKIE) await mobile.addCookies([cookieFor(BASE)]);
 
 const page = await mobile.newPage();
 page.on("console", (m) => {
@@ -53,10 +58,11 @@ if (await cont.count()) {
   await page.waitForLoadState("networkidle");
 }
 
-await shot("01-login");
-
-console.log("→ вход в демо");
-await demo(page).click();
+await shot("01-login").catch(() => {});
+if (!SHOT_COOKIE) {
+  console.log("→ вход");
+  await demo(page).click();
+}
 await page.waitForSelector(".lesson, .hero", { timeout: 20000 });
 await shot("02-today");
 await page.evaluate(() => window.scrollTo(0, 340));
@@ -108,6 +114,7 @@ const desktop = await browser.newContext({
   timezoneId: "Europe/Moscow",
 });
 const dpage = await desktop.newPage();
+if (SHOT_COOKIE) await desktop.addCookies([cookieFor(BASE)]);
 dpage.on("pageerror", (e) => errors.push(`desktop pageerror: ${e.message}`));
 await dpage.goto(BASE, { waitUntil: "networkidle" });
 const dcont = dpage.locator("text=Continue to Site").first();
@@ -115,7 +122,7 @@ if (await dcont.count()) {
   await dcont.click();
   await dpage.waitForLoadState("networkidle");
 }
-await demo(dpage).click();
+if (!SHOT_COOKIE) await demo(dpage).click();
 await dpage.waitForSelector(".lesson, .hero", { timeout: 20000 });
 await dpage.waitForTimeout(700);
 await dpage.screenshot({ path: `${OUT}/11-desktop.png` });

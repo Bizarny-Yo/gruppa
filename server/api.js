@@ -228,6 +228,21 @@ api.get("/me", (req, res) => {
   });
 });
 
+api.patch("/me", requireAuth, (req, res) => {
+  const name = String(req.body?.name ?? "").trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 60) {
+    return res.status(400).json({ error: "Имя должно быть от 2 до 60 символов" });
+  }
+
+  const clash = db
+    .prepare("SELECT id FROM users WHERE group_id = ? AND lower(name) = lower(?) AND id <> ?")
+    .get(req.user.groupId, name, req.user.id);
+  if (clash) return res.status(409).json({ error: "Такое имя уже занято в группе" });
+
+  db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name, req.user.id);
+  res.json({ ok: true, name });
+});
+
 api.post("/me/subgroup", requireAuth, (req, res) => {
   const map = { "а": "А", "a": "А", "б": "Б", "b": "Б" };
   const raw = String(req.body?.subgroup ?? "").trim().toLowerCase();

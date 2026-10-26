@@ -1,9 +1,80 @@
 /**
- * Smoke-тест API: поднимает сессию как настоящий клиент и проверяет основные сценарии.
- * Запуск: node scripts/smoke.mjs [baseUrl]
+ * Smoke-тест API.
+ *
+ * По умолчанию поднимает СВОЙ изолированный сервер на временной базе с демо-данными —
+ * чтобы не трогать настоящую группу пользователя. Регистрация тестовых студентов,
+ * отметки и объявления остаются в temp-базе и удаляются после прогона.
+ *
+ * Запуск:  node scripts/smoke.mjs                 # изолированно (по умолчанию)
+ *          node scripts/smoke.mjs http://host:port # против уже запущенного сервера
  */
 
-const BASE = process.argv[2] ?? "http://127.0.0.1:47824";
+import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+let child = null;
+let dataDir = null;
+let BASE = process.argv[2] ?? process.env.SMOKE_BASE ?? null;
+
+if (!BASE) {
+  const PORT = 47899;
+  dataDir = mkdtempSync(join(tmpdir(), "gruppa-smoke-"));
+  child = spawn(process.execPath, [join(ROOT, "server", "index.js")], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      HOST: "127.0.0.1",
+      DATA_DIR: dataDir,
+      SEED_DEMO: "1",
+      DISABLE_REMINDERS: "1",
+    },
+    stdio: "ignore",
+  });
+  BASE = `http://127.0.0.1:${PORT}`;
+
+  let ready = false;
+  for (let i = 0; i < 80; i++) {
+    try {
+      const r = await fetch(`${BASE}/api/health`);
+      if (r.ok) {
+        ready = true;
+        break;
+      }
+    } catch {
+      /* ещё поднимается */
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  if (!ready) {
+    console.error("Не удалось поднять тестовый сервер");
+    child.kill();
+    process.exit(1);
+  }
+
+  const cleanup = () => {
+    try {
+      child?.kill();
+    } catch {
+      /* уже мёртв */
+    }
+    try {
+      if (dataDir) rmSync(dataDir, { recursive: true, force: true });
+    } catch {
+      /* пусть останется */
+    }
+  };
+  process.on("exit", cleanup);
+  process.on("SIGINT", () => {
+    cleanup();
+    process.exit(130);
+  });
+}
 
 let cookie = "";
 let passed = 0;
@@ -72,13 +143,13 @@ let studentsTotal = 0;
   const login = await call("/api/auth/login", {
     method: "POST",
     auth: false,
-    body: { code: "05-605", name: "Артём Соколов", password: "demo1234" },
+    body: { code: "PMI21", name: "Артём Соколов", password: "demo1234" },
   });
   check("логин demo-старосты", login.status === 200 && login.json?.user?.role === "starosta", JSON.stringify(login.json));
   check("выдана сессионная cookie", cookie.startsWith("sid="));
 
   const me = await call("/api/me");
-  check("GET /api/me → группа 05-605", me.json?.group?.name === "05-605");
+  check("GET /api/me → группа ПМИ-21", me.json?.group?.name === "ПМИ-21");
   studentsTotal = me.json?.group?.students ?? 0;
   check("в группе минимум 12 человек", studentsTotal >= 12, String(studentsTotal));
 }
@@ -98,7 +169,7 @@ let todayLessons = [];
   check("в неделе больше 10 пар", total > 10, `найдено ${total}`);
 
   const subjects = await call("/api/subjects");
-  check("GET /api/subjects → 9 предметов", subjects.json?.length === 9, String(subjects.json?.length));
+  check("GET /api/subjects → 6 предметов", subjects.json?.length === 6, String(subjects.json?.length));
 }
 
 section("Отметка посещаемости");
@@ -146,7 +217,7 @@ section("Статистика");
 
   const group = await call("/api/stats/group");
   check("GET /api/stats/group → вся группа", group.json?.students?.length === studentsTotal, `${group.json?.students?.length} vs ${studentsTotal}`);
-  check("статистика по предметам есть", (group.json?.bySubject ?? []).length === 9);
+  check("статистика по предметам есть", (group.json?.bySubject ?? []).length === 6);
 }
 
 section("Новости и дедлайны");
@@ -187,7 +258,7 @@ section("Роли и регистрация");
   const reg = await call("/api/auth/register", {
     method: "POST",
     auth: false,
-    body: { code: "05-605", name: `Новичок ${code}`, password: "pass1234" },
+    body: { code: "PMI21", name: `Новичок ${code}`, password: "pass1234" },
   });
   check("регистрация нового студента → 201", reg.status === 201, JSON.stringify(reg.json));
 
@@ -258,7 +329,7 @@ section("Безопасность");
   const wrong = await call("/api/auth/login", {
     method: "POST",
     auth: false,
-    body: { code: "05-605", name: "Артём Соколов", password: "неверный" },
+    body: { code: "PMI21", name: "Артём Соколов", password: "неверный" },
   });
   check("неверный пароль → 401", wrong.status === 401);
 

@@ -33,6 +33,7 @@ export async function req(path, { method = "GET", body, signal } = {}) {
 
 export const get = (path, opts) => req(path, opts);
 export const post = (path, body, opts) => req(path, { ...opts, method: "POST", body });
+export const patch = (path, body, opts) => req(path, { ...opts, method: "PATCH", body });
 export const del = (path, opts) => req(path, { ...opts, method: "DELETE" });
 
 /** Подписка на live-события группы */

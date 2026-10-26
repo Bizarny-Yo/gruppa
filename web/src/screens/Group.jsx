@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { get, post } from "../api.js";
+import { get, post, patch } from "../api.js";
 import { useFetch, Icon, Avatar, Sheet, Spinner, ErrorBox } from "../ui.jsx";
 import PushToggle from "../PushToggle.jsx";
 import { WEEKDAYS_SHORT } from "../dates.js";
@@ -8,7 +8,25 @@ export default function Group({ me, onLogout, notify }) {
   const members = useFetch(() => get("/members"), []);
   const subjects = useFetch(() => get("/subjects"), []);
   const [sheet, setSheet] = useState(null); // "slot" | "subject"
+  const [nameSheet, setNameSheet] = useState(false);
+  const [nameValue, setNameValue] = useState(me.user.name);
+  const [savingName, setSavingName] = useState(false);
   const isAdmin = me.user.role === "starosta";
+
+  async function saveName(e) {
+    e.preventDefault();
+    setSavingName(true);
+    try {
+      await patch("/me", { name: nameValue.trim() });
+      setNameSheet(false);
+      notify("Имя обновлено");
+      onRefresh?.();
+    } catch (err) {
+      notify(err.message, "err");
+    } finally {
+      setSavingName(false);
+    }
+  }
 
   async function logout() {
     await post("/auth/logout", {}).catch(() => {});
@@ -50,6 +68,17 @@ export default function Group({ me, onLogout, notify }) {
                 {me.group.profile ? ` · ${me.group.profile}` : ""}
               </div>
             )}
+            <button
+              type="button"
+              className="link"
+              style={{ fontSize: 12, marginTop: 6 }}
+              onClick={() => {
+                setNameValue(me.user.name);
+                setNameSheet(true);
+              }}
+            >
+              Изменить имя
+            </button>
           </div>
         </div>
 
@@ -138,6 +167,26 @@ export default function Group({ me, onLogout, notify }) {
           </div>
         )}
       </div>
+
+      <Sheet open={nameSheet} onClose={() => setNameSheet(false)} title="Изменить имя">
+        <form onSubmit={saveName}>
+          <div className="field">
+            <label htmlFor="username">Имя и фамилия</label>
+            <input
+              id="username"
+              value={nameValue}
+              onChange={(e) => setNameValue(e.target.value)}
+              minLength={2}
+              maxLength={60}
+              required
+            />
+            <span className="hint">Так тебя увидят в списке группы и в отметках</span>
+          </div>
+          <button type="submit" className="btn primary block" disabled={savingName}>
+            {savingName ? "Сохраняем…" : "Сохранить"}
+          </button>
+        </form>
+      </Sheet>
 
       <Sheet open={sheet === "slot"} onClose={() => setSheet(null)} title="Добавить пару">
         <SlotForm

@@ -25,19 +25,6 @@ export default function Auth({ onAuth }) {
     }
   }
 
-  async function demo() {
-    setBusy(true);
-    setError("");
-    try {
-      await post("/auth/login", { code: "05-605", name: "Артём Соколов", password: "demo1234" });
-      onAuth(await get("/me"));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="auth">
       <div className="auth-logo">
@@ -92,11 +79,11 @@ export default function Auth({ onAuth }) {
       <div className="card" style={{ background: "var(--bg-2)" }}>
         <div className="row between">
           <div>
-            <strong style={{ fontSize: 13.5 }}>Посмотреть демо</strong>
-            <div className="tiny muted">Группа 05-605, расписание семестра</div>
+            <strong style={{ fontSize: 13.5 }}>Первый раз здесь?</strong>
+            <div className="tiny muted">Код группы спроси у старосты — 05-605</div>
           </div>
-          <button type="button" className="btn sm" onClick={demo} disabled={busy}>
-            <Icon name="spark" size={15} /> Открыть
+          <button type="button" className="btn sm" onClick={() => setMode("register")} disabled={busy}>
+            <Icon name="spark" size={15} /> Регистрация
           </button>
         </div>
       </div>
