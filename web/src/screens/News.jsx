@@ -1,25 +1,37 @@
 import { useEffect, useState } from "react";
 import { get, post, del, subscribe } from "../api.js";
 import { useFetch, Icon, Spinner, ErrorBox, Empty, Sheet, Avatar } from "../ui.jsx";
-import { dayNumber, monthShort, parseIso } from "../dates.js";
+import { dayNumber, monthShort, parseIso, todayIso, remainingMs, formatRemaining } from "../dates.js";
+
+/* ─────────────── живой таймер ─────────────── */
+
+function useNow(interval = 1000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), interval);
+    return () => clearInterval(t);
+  }, [interval]);
+  return now;
+}
 
 export default function News({ me, notify }) {
   const ann = useFetch(() => get("/announcements"), []);
-  const dl = useFetch(() => get("/deadlines"), []);
+  const deadlines = useFetch(() => get("/deadlines"), []);
+  const subjects = useFetch(() => get("/subjects"), []);
+  const now = useNow(1000);
+
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", body: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const [dlOpen, setDlOpen] = useState(false);
+  const [dlForm, setDlForm] = useState({ title: "", dueDate: todayIso(), subjectId: "" });
+  const [dlBusy, setDlBusy] = useState(false);
+
   const isAdmin = me.user.role === "starosta";
 
-  useEffect(
-    () =>
-      subscribe({
-        announcement: () => ann.reload(),
-      }),
-    []
-  );
+  useEffect(() => subscribe({ announcement: () => ann.reload() }), []);
 
   async function submit(e) {
     e.preventDefault();
@@ -38,7 +50,7 @@ export default function News({ me, notify }) {
     }
   }
 
-  async function remove(id) {
+  async function removeAnnouncement(id) {
     try {
       await del(`/announcements/${id}`);
       ann.reload();
@@ -47,6 +59,42 @@ export default function News({ me, notify }) {
       notify(err.message, "err");
     }
   }
+
+  async function createDeadline(e) {
+    e.preventDefault();
+    setDlBusy(true);
+    try {
+      await post("/deadlines", {
+        title: dlForm.title,
+        dueDate: dlForm.dueDate,
+        subjectId: dlForm.subjectId || null,
+      });
+      setDlForm({ title: "", dueDate: todayIso(), subjectId: "" });
+      setDlOpen(false);
+      deadlines.reload();
+      notify("Дедлайн добавлен");
+    } catch (err) {
+      notify(err.message, "err");
+    } finally {
+      setDlBusy(false);
+    }
+  }
+
+  async function removeDeadline(id) {
+    try {
+      await del(`/deadlines/${id}`);
+      deadlines.reload();
+      notify("Дедлайн удалён");
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  const sorted = [...(deadlines.data ?? [])].sort(
+    (a, b) => parseIso(a.due_date) - parseIso(b.due_date)
+  );
+  const upcoming = sorted.filter((d) => remainingMs(d.due_date, now) > 0);
+  const overdue = sorted.filter((d) => remainingMs(d.due_date, now) <= 0);
 
   return (
     <>
@@ -59,7 +107,7 @@ export default function News({ me, notify }) {
         )}
       </div>
 
-      {(ann.loading && !ann.data) ? (
+      {ann.loading && !ann.data ? (
         <Spinner text="Загружаем" />
       ) : ann.error ? (
         <ErrorBox message={ann.error} onRetry={ann.reload} />
@@ -73,9 +121,10 @@ export default function News({ me, notify }) {
               {a.body && <p>{a.body}</p>}
               <div className="meta">
                 <Avatar name={a.author_name} color={a.author_color} size={18} />
-                {a.author_name} · {new Date(a.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                {a.author_name} ·{" "}
+                {new Date(a.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
                 {isAdmin && (
-                  <button type="button" className="link" style={{ marginLeft: "auto", fontSize: 12 }} onClick={() => remove(a.id)}>
+                  <button type="button" className="link" style={{ marginLeft: "auto", fontSize: 12 }} onClick={() => removeAnnouncement(a.id)}>
                     удалить
                   </button>
                 )}
@@ -86,13 +135,33 @@ export default function News({ me, notify }) {
       )}
 
       <div className="section">
-        <div className="section-head"><h2>Дедлайны</h2></div>
-        {dl.loading && !dl.data ? (
+        <div className="section-head">
+          <h2>Дедлайны</h2>
+          {isAdmin && (
+            <button type="button" className="link" onClick={() => setDlOpen(true)}>
+              + добавить
+            </button>
+          )}
+        </div>
+
+        {deadlines.loading && !deadlines.data ? (
           <Spinner text="Загружаем" />
-        ) : !dl.data?.length ? (
-          <Empty icon="book" title="Дедлайнов нет" text="Когда появятся — покажем здесь с датой сдачи." />
+        ) : deadlines.error ? (
+          <ErrorBox message={deadlines.error} onRetry={deadlines.reload} />
+        ) : !sorted.length ? (
+          <Empty icon="book" title="Дедлайнов нет" text="Добавь первый — покажем обратный отсчёт." />
         ) : (
-          dl.data.map((d) => <DeadlineRow key={d.id} item={d} />)
+          <>
+            {upcoming.map((d) => (
+              <DeadlineRow key={d.id} item={d} now={now} isAdmin={isAdmin} onDelete={removeDeadline} />
+            ))}
+            {overdue.length > 0 && (
+              <div className="tiny muted" style={{ margin: "12px 0 6px" }}>просроченные</div>
+            )}
+            {overdue.map((d) => (
+              <DeadlineRow key={d.id} item={d} now={now} isAdmin={isAdmin} onDelete={removeDeadline} />
+            ))}
+          </>
         )}
       </div>
 
@@ -112,29 +181,80 @@ export default function News({ me, notify }) {
           </button>
         </form>
       </Sheet>
+
+      <Sheet open={dlOpen} onClose={() => setDlOpen(false)} title="Новый дедлайн">
+        <form onSubmit={createDeadline}>
+          <div className="field">
+            <label htmlFor="dlt">Что сдать</label>
+            <input
+              id="dlt"
+              value={dlForm.title}
+              onChange={(e) => setDlForm({ ...dlForm, title: e.target.value })}
+              placeholder="Лабораторная №3"
+              maxLength={120}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="dld">Срок</label>
+            <input
+              id="dld"
+              type="date"
+              value={dlForm.dueDate}
+              onChange={(e) => setDlForm({ ...dlForm, dueDate: e.target.value })}
+              required
+            />
+            <span className="hint">Отсчёт идёт до конца этого дня</span>
+          </div>
+          <div className="field">
+            <label htmlFor="dls">Предмет</label>
+            <select id="dls" value={dlForm.subjectId} onChange={(e) => setDlForm({ ...dlForm, subjectId: e.target.value })}>
+              <option value="">без предмета</option>
+              {(subjects.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <button type="submit" className="btn primary block" disabled={dlBusy}>
+            {dlBusy ? "Сохраняем…" : "Добавить"}
+          </button>
+        </form>
+      </Sheet>
     </>
   );
 }
 
-function DeadlineRow({ item }) {
-  const d = parseIso(item.due_date);
-  const days = Math.ceil((d - new Date()) / 86400000);
-  const soon = days >= 0 && days <= 3;
+function DeadlineRow({ item, now, isAdmin, onDelete }) {
+  const ms = remainingMs(item.due_date, now);
+  const late = ms <= 0;
+  const soon = !late && ms < 3 * 86400000;
+
+  const countdown = late
+    ? "просрочено"
+    : ms < 86400000
+      ? `осталось ${formatRemaining(ms)}`
+      : `через ${formatRemaining(ms)}`;
 
   return (
-    <div className={`deadline${soon ? " soon" : ""}`}>
+    <div className={`deadline${late ? " late" : soon ? " soon" : ""}`}>
       <div className="date">
         <b>{dayNumber(item.due_date)}</b>
         <span>{monthShort(item.due_date)}</span>
       </div>
+
       <div className="info">
         <strong>{item.title}</strong>
         <span>
           {item.subject ? `${item.subject} · ` : ""}
-          {days < 0 ? "просрочено" : days === 0 ? "сегодня" : `через ${days} дн.`}
+          <em className={late ? "count late" : soon ? "count soon" : "count"}>{countdown}</em>
         </span>
       </div>
-      {item.color && <span style={{ width: 8, height: 8, borderRadius: 99, background: item.color }} />}
+
+      {isAdmin && (
+        <button type="button" className="icon-btn" onClick={() => onDelete(item.id)} aria-label="Удалить дедлайн" title="Удалить">
+          <Icon name="x" size={14} />
+        </button>
+      )}
     </div>
   );
 }

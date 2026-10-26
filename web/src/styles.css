@@ -738,3 +738,69 @@ a { color: var(--accent-2); }
   border: 1px solid rgb(108 140 255 / 25%);
 }
 
+/* ─────────────────────── дедлайны ─────────────────────── */
+
+.deadline.late { border-color: rgb(255 107 107 / 35%); }
+.deadline.late .date { border-color: rgb(255 107 107 / 45%); color: var(--bad); }
+
+.deadline .count {
+  font-style: normal;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.deadline .count.soon { color: var(--warn); }
+.deadline .count.late { color: var(--bad); }
+
+.deadline-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgb(245 165 36 / 30%);
+  background: rgb(245 165 36 / 8%);
+  color: var(--text);
+  text-align: left;
+  transition: transform .1s, background .15s;
+}
+.deadline-banner:active { transform: scale(.995); }
+
+.deadline-banner .db-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: rgb(245 165 36 / 16%);
+  color: var(--warn);
+}
+
+.deadline-banner .db-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.deadline-banner .db-text strong {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deadline-banner .db-text span {
+  font-size: 12px;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+
+.deadline-banner.soon {
+  border-color: rgb(255 107 107 / 40%);
+  background: rgb(255 107 107 / 8%);
+}
+.deadline-banner.soon .db-icon { background: rgb(255 107 107 / 16%); color: var(--bad); }
+.deadline-banner.soon .db-text span { color: var(--bad); }
+

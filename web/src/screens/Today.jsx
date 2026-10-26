@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { get, post, subscribe, STATUS } from "../api.js";
 import { useFetch, Icon, Spinner, ErrorBox, Empty } from "../ui.jsx";
 import LessonCard from "../LessonCard.jsx";
 import StatusOptions from "../StatusOptions.jsx";
 import { go } from "../router.js";
+import { remainingMs, formatRemaining } from "../dates.js";
 
 const WEEKDAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
 
@@ -23,6 +24,13 @@ function humanUntil(diff) {
 
 export default function Today({ notify }) {
   const { data, loading, error, reload } = useFetch(() => get("/today"), []);
+  const deadlines = useFetch(() => get("/deadlines"), []);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     return subscribe({
@@ -50,6 +58,11 @@ export default function Today({ notify }) {
   const current = lessons.find((l) => l.status === "now");
   const next = lessons.find((l) => l.status === "upcoming");
   const hero = current ?? next;
+
+  const nearest = (deadlines.data ?? [])
+    .map((d) => ({ ...d, ms: remainingMs(d.due_date, now) }))
+    .filter((d) => d.ms > 0)
+    .sort((a, b) => a.ms - b.ms)[0];
 
   const date = new Date();
   const weekday = WEEKDAYS[date.getDay()];
@@ -125,6 +138,19 @@ export default function Today({ notify }) {
             ))}
           </div>
         </section>
+      )}
+
+      {nearest && (
+        <button type="button" className={`deadline-banner${nearest.ms < 86400000 ? " soon" : ""}`} onClick={() => go("/news")}>
+          <span className="db-icon">
+            <Icon name="bell" size={16} />
+          </span>
+          <span className="db-text">
+            <strong>{nearest.title}</strong>
+            <span>{formatRemaining(nearest.ms)}</span>
+          </span>
+          <Icon name="right" size={16} />
+        </button>
       )}
 
       <div className="section">

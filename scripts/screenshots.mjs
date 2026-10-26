@@ -86,7 +86,7 @@ await shot("07-stats-group");
 
 console.log("→ новости");
 await tab("Новости").click();
-await page.waitForSelector(".announce");
+await page.waitForSelector(".deadline, .announce, .empty");
 await shot("08-news");
 
 console.log("→ группа");
