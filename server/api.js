@@ -346,6 +346,45 @@ api.post("/me/subgroup", requireAuth, (req, res) => {
   res.json({ ok: true, subgroup });
 });
 
+/** Создание новой группы: любой может завести свою и стать её старостой */
+api.post("/groups", (req, res) => {
+  if (!allowAttempt(`newgroup|${clientKey(req)}`, 5, 60_000)) return tooMany(res);
+
+  const { groupName, code, name, password, program, profile } = req.body ?? {};
+  const cleanCode = String(code ?? "").trim().toUpperCase();
+
+  if (!groupName?.trim()) return res.status(400).json({ error: "Нужно название группы" });
+  if (String(groupName).trim().length > 60) return res.status(400).json({ error: "Слишком длинное название" });
+  if (!/^[A-ZА-ЯЁ0-9-]{3,20}$/.test(cleanCode)) {
+    return res.status(400).json({ error: "Код: 3–20 символов, буквы/цифры/дефис" });
+  }
+  if (!name?.trim() || String(name).trim().length < 2) return res.status(400).json({ error: "Укажи своё имя" });
+  if (String(password ?? "").length < 8) return res.status(400).json({ error: "Пароль минимум 8 символов" });
+
+  const taken = db.prepare("SELECT id FROM groups WHERE code = ?").get(cleanCode);
+  if (taken) return res.status(409).json({ error: "Такой код уже занят" });
+
+  const { groupId } = makeGroup({
+    name: String(groupName).trim(),
+    code: cleanCode,
+    starostaName: String(name).trim(),
+    passwordHash: hashPassword(password),
+  });
+
+  if (program?.trim()) {
+    db.prepare("UPDATE groups SET program = ?, profile = ? WHERE id = ?").run(
+      String(program).trim(),
+      profile?.trim() ? String(profile).trim() : null,
+      groupId
+    );
+  }
+
+  const user = db.prepare("SELECT * FROM users WHERE group_id = ? AND role = 'starosta'").get(groupId);
+  const { token, expires } = createSession(user.id);
+  res.setHeader("set-cookie", sessionCookie(token, expires, isSecureRequest(req)));
+  res.status(201).json({ ok: true, group: { id: groupId, name: groupName.trim(), code: cleanCode }, user: userPublic(user) });
+});
+
 /* ───────────────────────── расписание ───────────────────────── */
 
 function schedulePayload(user, dates) {
@@ -645,6 +684,83 @@ api.post("/deadlines", requireAdmin, (req, res) => {
 api.delete("/deadlines/:id", requireAdmin, (req, res) => {
   db.prepare("DELETE FROM deadlines WHERE id = ? AND group_id = ?").run(Number(req.params.id), req.user.groupId);
   res.json({ ok: true });
+});
+
+/* ───────────────────────── домашние задания ───────────────────────── */
+
+api.get("/homework", requireAuth, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT h.id, h.title, h.description, h.due_date, h.created_at,
+              s.name AS subject, s.color,
+              (SELECT COUNT(*) FROM homework_done d WHERE d.homework_id = h.id) AS done_count,
+              (SELECT COUNT(*) FROM users u WHERE u.group_id = h.group_id) AS total,
+              EXISTS(SELECT 1 FROM homework_done d WHERE d.homework_id = h.id AND d.user_id = ?) AS mine
+       FROM homework h LEFT JOIN subjects s ON s.id = h.subject_id
+       WHERE h.group_id = ?
+       ORDER BY (h.due_date IS NULL), h.due_date, h.created_at DESC`
+    )
+    .all(req.user.id, req.user.groupId);
+
+  res.json(rows.map((r) => ({ ...r, mine: Boolean(r.mine) })));
+});
+
+api.post("/homework", requireAdmin, (req, res) => {
+  const { title, description, subjectId, dueDate } = req.body ?? {};
+  if (!title?.trim()) return res.status(400).json({ error: "Нужно название задания" });
+  if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(dueDate))) {
+    return res.status(400).json({ error: "Неверная дата" });
+  }
+
+  const r = db
+    .prepare(
+      `INSERT INTO homework (group_id, subject_id, author_id, title, description, due_date, created_at)
+       VALUES (?,?,?,?,?,?,?)`
+    )
+    .run(
+      req.user.groupId,
+      subjectId ? Number(subjectId) : null,
+      req.user.id,
+      title.trim().slice(0, 160),
+      String(description ?? "").trim().slice(0, 2000),
+      dueDate || null,
+      nowIso()
+    );
+
+  const row = db.prepare("SELECT * FROM homework WHERE id = ?").get(Number(r.lastInsertRowid));
+  broadcast(req.user.groupId, "homework", row);
+  res.status(201).json(row);
+});
+
+api.delete("/homework/:id", requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM homework WHERE id = ? AND group_id = ?").run(Number(req.params.id), req.user.groupId);
+  res.json({ ok: true });
+});
+
+api.post("/homework/:id/toggle", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const hw = db
+    .prepare("SELECT id FROM homework WHERE id = ? AND group_id = ?")
+    .get(id, req.user.groupId);
+  if (!hw) return res.status(404).json({ error: "Задание не найдено" });
+
+  const done = db
+    .prepare("SELECT 1 FROM homework_done WHERE homework_id = ? AND user_id = ?")
+    .get(id, req.user.id);
+
+  if (done) {
+    db.prepare("DELETE FROM homework_done WHERE homework_id = ? AND user_id = ?").run(id, req.user.id);
+  } else {
+    db.prepare("INSERT INTO homework_done (homework_id, user_id, done_at) VALUES (?,?,?)").run(
+      id,
+      req.user.id,
+      nowIso()
+    );
+  }
+
+  const count = db.prepare("SELECT COUNT(*) AS n FROM homework_done WHERE homework_id = ?").get(id).n;
+  broadcast(req.user.groupId, "homework", { id, doneCount: count });
+  res.json({ ok: true, mine: !done, doneCount: count });
 });
 
 /* ───────────────────────── админ: расписание ───────────────────────── */

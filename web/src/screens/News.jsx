@@ -17,8 +17,13 @@ function useNow(interval = 1000) {
 export default function News({ me, notify }) {
   const ann = useFetch(() => get("/announcements"), []);
   const deadlines = useFetch(() => get("/deadlines"), []);
+  const homework = useFetch(() => get("/homework"), []);
   const subjects = useFetch(() => get("/subjects"), []);
   const now = useNow(1000);
+
+  const [hwOpen, setHwOpen] = useState(false);
+  const [hwForm, setHwForm] = useState({ title: "", description: "", subjectId: "", dueDate: "" });
+  const [hwBusy, setHwBusy] = useState(false);
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", body: "" });
@@ -90,6 +95,47 @@ export default function News({ me, notify }) {
     }
   }
 
+  async function createHomework(e) {
+    e.preventDefault();
+    setHwBusy(true);
+    try {
+      await post("/homework", {
+        title: hwForm.title,
+        description: hwForm.description,
+        subjectId: hwForm.subjectId || null,
+        dueDate: hwForm.dueDate || null,
+      });
+      setHwForm({ title: "", description: "", subjectId: "", dueDate: "" });
+      setHwOpen(false);
+      homework.reload();
+      notify("Домашка добавлена");
+    } catch (err) {
+      notify(err.message, "err");
+    } finally {
+      setHwBusy(false);
+    }
+  }
+
+  async function removeHomework(id) {
+    try {
+      await del(`/homework/${id}`);
+      homework.reload();
+      notify("Задание удалено");
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  async function toggleHomework(id) {
+    try {
+      const r = await post(`/homework/${id}/toggle`, {});
+      homework.reload();
+      notify(r.mine ? "Отмечено как сделано" : "Снята отметка");
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
   const sorted = [...(deadlines.data ?? [])].sort(
     (a, b) => parseIso(a.due_date) - parseIso(b.due_date)
   );
@@ -133,6 +179,57 @@ export default function News({ me, notify }) {
           ))}
         </div>
       )}
+
+      <div className="section">
+        <div className="section-head">
+          <h2>Домашние задания</h2>
+          {isAdmin && (
+            <button type="button" className="link" onClick={() => setHwOpen(true)}>
+              + задать
+            </button>
+          )}
+        </div>
+
+        {homework.loading && !homework.data ? (
+          <Spinner text="Загружаем" />
+        ) : homework.error ? (
+          <ErrorBox message={homework.error} onRetry={homework.reload} />
+        ) : !homework.data?.length ? (
+          <Empty icon="book" title="Домашки пока нет" text="Староста может записать, что задали на паре." />
+        ) : (
+          <div className="card" style={{ padding: "6px 14px" }}>
+            {homework.data.map((h) => (
+              <div key={h.id} className={`hw${h.mine ? " done" : ""}`}>
+                <button
+                  type="button"
+                  className={`hw-check${h.mine ? " on" : ""}`}
+                  onClick={() => toggleHomework(h.id)}
+                  aria-pressed={h.mine}
+                  aria-label="Сделано"
+                >
+                  {h.mine && <Icon name="check" size={14} />}
+                </button>
+
+                <div className="hw-body">
+                  <strong>{h.title}</strong>
+                  {h.description && <p>{h.description}</p>}
+                  <div className="hw-meta">
+                    {h.subject && <span style={{ color: h.color }}>{h.subject}</span>}
+                    <span>{h.due_date ? `сдать ${dayNumber(h.due_date)} ${monthShort(h.due_date)}` : "без срока"}</span>
+                    <span>сделали {h.done_count} из {h.total}</span>
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <button type="button" className="icon-btn" onClick={() => removeHomework(h.id)} aria-label="Удалить задание">
+                    <Icon name="x" size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="section">
         <div className="section-head">
@@ -217,6 +314,55 @@ export default function News({ me, notify }) {
           </div>
           <button type="submit" className="btn primary block" disabled={dlBusy}>
             {dlBusy ? "Сохраняем…" : "Добавить"}
+          </button>
+        </form>
+      </Sheet>
+      <Sheet open={hwOpen} onClose={() => setHwOpen(false)} title="Новое задание">
+        <form onSubmit={createHomework}>
+          <div className="field">
+            <label htmlFor="hwt">Что задали</label>
+            <input
+              id="hwt"
+              value={hwForm.title}
+              onChange={(e) => setHwForm({ ...hwForm, title: e.target.value })}
+              placeholder="Параграф 12, задачи 3–7"
+              maxLength={160}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="hwd">Подробности</label>
+            <textarea
+              id="hwd"
+              value={hwForm.description}
+              onChange={(e) => setHwForm({ ...hwForm, description: e.target.value })}
+              placeholder="Что именно делать, на что обратить внимание"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="hws">Предмет</label>
+            <select
+              id="hws"
+              value={hwForm.subjectId}
+              onChange={(e) => setHwForm({ ...hwForm, subjectId: e.target.value })}
+            >
+              <option value="">без предмета</option>
+              {(subjects.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="hwdd">Сдать до (необязательно)</label>
+            <input
+              id="hwdd"
+              type="date"
+              value={hwForm.dueDate}
+              onChange={(e) => setHwForm({ ...hwForm, dueDate: e.target.value })}
+            />
+          </div>
+          <button type="submit" className="btn primary block" disabled={hwBusy}>
+            {hwBusy ? "Сохраняем…" : "Задать"}
           </button>
         </form>
       </Sheet>

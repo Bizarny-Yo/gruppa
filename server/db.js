@@ -110,6 +110,27 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS homework (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
+  author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  due_date TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS homework_done (
+  homework_id INTEGER NOT NULL REFERENCES homework(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  done_at TEXT NOT NULL,
+  PRIMARY KEY (homework_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_homework_group ON homework(group_id);
+CREATE INDEX IF NOT EXISTS idx_homework_done ON homework_done(user_id);
+
 CREATE INDEX IF NOT EXISTS idx_slots_group ON slots(group_id, weekday);CREATE INDEX IF NOT EXISTS idx_att_slot_date ON attendance(slot_id, date);
 CREATE INDEX IF NOT EXISTS idx_att_user ON attendance(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
