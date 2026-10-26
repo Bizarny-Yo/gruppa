@@ -33,6 +33,18 @@ function Shell({ me, onLogout, onRefresh }) {
   const route = useRoute();
   const [toast, setToast] = useState(null);
   const [parityOpen, setParityOpen] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    addEventListener("online", goOnline);
+    addEventListener("offline", goOffline);
+    return () => {
+      removeEventListener("online", goOnline);
+      removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   const notify = (message, kind = "ok") => {
     setToast({ message, kind });
@@ -66,6 +78,8 @@ function Shell({ me, onLogout, onRefresh }) {
             <Avatar name={me.user.name} color={me.user.color} size={26} />
           </button>
         </header>
+
+        {!online && <div className="offline-bar">Офлайн — показаны последние сохранённые данные</div>}
 
         <main className="page">{screens[route.name] ?? screens.today}</main>
 
@@ -159,6 +173,14 @@ function App() {
       me={me}
       onRefresh={load}
       onLogout={async () => {
+        try {
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch {
+          /* кэш не критичен */
+        }
         setMe(null);
       }}
     />
