@@ -117,6 +117,39 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
 export const nowIso = () => new Date().toISOString();
 
+/* ─────────────── настройки и миграции ─────────────── */
+
+export function getSetting(key, fallback = null) {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+  return row ? row.value : fallback;
+}
+
+export function setSetting(key, value) {
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+  ).run(key, String(value));
+}
+
+function ensureColumn(table, column, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+
+// Расписание из вуза: произвольные время, даты действия и подгруппы
+ensureColumn("slots", "starts_on", "starts_on TEXT");
+ensureColumn("slots", "ends_on", "ends_on TEXT");
+ensureColumn("slots", "subgroup", "subgroup TEXT");
+ensureColumn("users", "subgroup", "subgroup TEXT");
+
+if (!getSetting("semester_start")) {
+  // По умолчанию — понедельник недели, в которую попадает 1 сентября текущего года
+  const year = new Date().getMonth() >= 7 ? new Date().getFullYear() : new Date().getFullYear() - 1;
+  const sep1 = new Date(year, 8, 1);
+  const monday = new Date(sep1);
+  monday.setDate(sep1.getDate() - ((sep1.getDay() + 6) % 7));
+  setSetting("semester_start", monday.toISOString().slice(0, 10));
+}
+
 export function isEmpty() {
   return db.prepare("SELECT COUNT(*) AS n FROM groups").get().n === 0;
 }

@@ -1,6 +1,6 @@
 import webpush from "web-push";
-import { db, nowIso } from "./db.js";
-import { todayIso, weekdayOf, parityOf, minutesOf, nowMinutes } from "./time.js";
+import { db, nowIso, getSetting } from "./db.js";
+import { todayIso, weekdayOf, parityFor, minutesOf, nowMinutes } from "./time.js";
 
 /* ─────────────── VAPID-ключи: env или база (генерим один раз) ─────────────── */
 
@@ -121,16 +121,18 @@ function sendReminders() {
   const now = new Date();
   const iso = todayIso(now);
   const wd = weekdayOf(now);
-  const parity = parityOf(now);
+  const parity = parityFor(now, getSetting("semester_start", null));
   const currentMin = nowMinutes(now);
 
   const slots = db
     .prepare(
       `SELECT s.id, s.group_id, s.pair, s.start_time, s.end_time, s.room, sub.name AS subject
        FROM slots s JOIN subjects sub ON sub.id = s.subject_id
-       WHERE s.weekday = ? AND (s.parity = 'all' OR s.parity = ?)`
+       WHERE s.weekday = ? AND (s.parity = 'all' OR s.parity = ?)
+         AND (s.starts_on IS NULL OR s.starts_on <= ?)
+         AND (s.ends_on IS NULL OR s.ends_on >= ?)`
     )
-    .all(wd, parity);
+    .all(wd, parity, iso, iso);
 
   for (const slot of slots) {
     const inMinutes = minutesOf(slot.start_time) - currentMin;

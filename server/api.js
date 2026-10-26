@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, nowIso, isEmpty, makeGroup, seedDemo, pairTimes } from "./db.js";
+import { db, nowIso, isEmpty, makeGroup, seedDemo, pairTimes, getSetting } from "./db.js";
 import {
   hashPassword, verifyPassword, createSession, destroySession,
   userFromRequest, requireAuth, requireAdmin, sessionCookie, clearCookie, parseCookies,
@@ -8,9 +8,12 @@ import {
   publicKey, saveSubscription, removeSubscription, sendTest, sendToGroup, userHasSubscription,
 } from "./push.js";
 import {
-  todayIso, weekdayOf, parityOf, parseIso, weekDays, toIso, addDays,
+  todayIso, weekdayOf, parityOf, parityFor, parseIso, weekDays, toIso, addDays,
   minutesOf, nowMinutes, formatDateRu,
 } from "./time.js";
+
+/** Чётность недели по учебному календарю группы */
+const parityOn = (date) => parityFor(date, getSetting("semester_start", null));
 
 export const api = Router();
 
@@ -62,15 +65,17 @@ function groupUsers(groupId) {
 function slotsForDate(groupId, iso) {
   const date = parseIso(iso);
   const wd = weekdayOf(date);
-  const parity = parityOf(date);
+  const parity = parityOn(date);
   return db
     .prepare(
       `SELECT s.*, sub.name AS subject, sub.color, sub.teacher AS subject_teacher
        FROM slots s JOIN subjects sub ON sub.id = s.subject_id
        WHERE s.group_id = ? AND s.weekday = ? AND (s.parity = 'all' OR s.parity = ?)
-       ORDER BY s.pair`
+         AND (s.starts_on IS NULL OR s.starts_on <= ?)
+         AND (s.ends_on IS NULL OR s.ends_on >= ?)
+       ORDER BY s.start_time, s.pair, s.subgroup`
     )
-    .all(groupId, wd, parity);
+    .all(groupId, wd, parity, iso, iso);
 }
 
 function attendanceCounts(slotId, iso) {
@@ -107,6 +112,7 @@ function lessonView(groupId, slot, iso, userId, studentsTotal) {
     room: slot.room,
     teacher: slot.teacher || slot.subject_teacher,
     parity: slot.parity,
+    subgroup: slot.subgroup ?? null,
     subject: { id: slot.subject_id, name: slot.subject, color: slot.color },
     status: lessonStatus(iso, slot.start_time, slot.end_time),
     counts,
@@ -210,7 +216,7 @@ api.get("/me", (req, res) => {
   res.json({
     user: userPublic(user),
     group: { id: group.id, name: group.name, code: group.code, students },
-    parity: parityOf(new Date()),
+    parity: parityOn(new Date()),
     counts: {
       going: my.going ?? 0, late: my.late ?? 0,
       absent: my.absent ?? 0, sick: my.sick ?? 0,
@@ -232,7 +238,7 @@ function schedulePayload(user, dates) {
       date: iso,
       weekday: weekdayOf(date),
       label: formatDateRu(iso),
-      parity: parityOf(date),
+      parity: parityOn(date),
       lessons: slots.map((s) => lessonView(user.groupId, s, iso, user.id, studentsTotal)),
     };
   });

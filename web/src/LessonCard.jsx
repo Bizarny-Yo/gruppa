@@ -25,7 +25,8 @@ export default function LessonCard({ lesson, onOpen, showParity = false }) {
 
         <div className="lesson-main">
           <span className="pair-index">
-            {lesson.pair} пара{showParity && lesson.parity !== "all" ? ` · ${PARITY_LABEL[lesson.parity]}` : ""}
+            {lesson.pair} пара{lesson.subgroup ? ` · гр. ${lesson.subgroup}` : ""}
+            {showParity && lesson.parity !== "all" ? ` · ${PARITY_LABEL[lesson.parity]}` : ""}
           </span>
           <strong>{lesson.subject.name}</strong>
           <div className="lesson-meta">

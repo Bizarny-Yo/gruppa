@@ -36,6 +36,27 @@ export function parityOf(date) {
   return isoWeek(date) % 2 === 0 ? "even" : "odd";
 }
 
+/**
+ * Чётность учебной недели от начала семестра.
+ * Первая учебная неделя считается нечётной (числитель).
+ * Важно: академическая нумерация недель не совпадает с ISO, поэтому считаем от semester_start.
+ */
+export function parityFor(date, semesterStartIso) {
+  if (!semesterStartIso) return parityOf(date);
+  const start = parseIso(semesterStartIso);
+  const diffDays = Math.floor((date - start) / 86400000);
+  const week = Math.floor(diffDays / 7) + 1;
+  return Math.abs(week) % 2 === 1 ? "odd" : "even";
+}
+
+/** Номер учебной недели от начала семестра (1 — первая) */
+export function academicWeek(date, semesterStartIso) {
+  if (!semesterStartIso) return isoWeek(date);
+  const start = parseIso(semesterStartIso);
+  const diffDays = Math.floor((date - start) / 86400000);
+  return Math.floor(diffDays / 7) + 1;
+}
+
 export function addDays(date, n) {
   const d = new Date(date);
   d.setDate(d.getDate() + n);
