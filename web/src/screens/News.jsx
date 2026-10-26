@@ -183,11 +183,9 @@ export default function News({ me, notify }) {
       <div className="section">
         <div className="section-head">
           <h2>Домашние задания</h2>
-          {isAdmin && (
-            <button type="button" className="link" onClick={() => setHwOpen(true)}>
-              + задать
-            </button>
-          )}
+          <button type="button" className="link" onClick={() => setHwOpen(true)}>
+            + задать
+          </button>
         </div>
 
         {homework.loading && !homework.data ? (
@@ -215,12 +213,13 @@ export default function News({ me, notify }) {
                   {h.description && <p>{h.description}</p>}
                   <div className="hw-meta">
                     {h.subject && <span style={{ color: h.color }}>{h.subject}</span>}
+                    <span>{h.assigned_on ? `задано ${dayNumber(h.assigned_on)} ${monthShort(h.assigned_on)}` : "без даты"}</span>
                     <span>{h.due_date ? `сдать ${dayNumber(h.due_date)} ${monthShort(h.due_date)}` : "без срока"}</span>
                     <span>сделали {h.done_count} из {h.total}</span>
                   </div>
                 </div>
 
-                {isAdmin && (
+                {(isAdmin || h.author_id === me.user.id) && (
                   <button type="button" className="icon-btn" onClick={() => removeHomework(h.id)} aria-label="Удалить задание">
                     <Icon name="x" size={14} />
                   </button>

@@ -46,6 +46,16 @@ export default function LessonCard({ lesson, onOpen, showParity = false }) {
         {st && <span className={`status-pill ${lesson.myStatus}`}>{st.emoji} {st.short}</span>}
       </div>
 
+      {lesson.homework?.length > 0 && (
+        <div className="lesson-hw">
+          <Icon name="book" size={13} />
+          <span>
+            {lesson.homework[0].title}
+            {lesson.homework.length > 1 ? ` +${lesson.homework.length - 1}` : ""}
+          </span>
+        </div>
+      )}
+
       <div className="who">
         <span className={`status-pill ${lesson.status === "past" ? "" : "going"}`} style={lesson.status === "past" ? { background: "var(--card-2)", color: "var(--muted)", borderColor: "var(--line)" } : undefined}>
           {lesson.status === "past" ? "прошла" : lesson.status === "now" ? "идёт" : "скоро"}

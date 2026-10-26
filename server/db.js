@@ -163,6 +163,8 @@ ensureColumn("slots", "subgroup", "subgroup TEXT");
 ensureColumn("users", "subgroup", "subgroup TEXT");
 ensureColumn("groups", "program", "program TEXT");
 ensureColumn("groups", "profile", "profile TEXT");
+ensureColumn("homework", "assigned_on", "assigned_on TEXT");
+ensureColumn("homework", "slot_id", "slot_id INTEGER");
 
 if (!getSetting("semester_start")) {
   // По умолчанию — понедельник недели, в которую попадает 1 сентября текущего года

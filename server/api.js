@@ -120,7 +120,7 @@ function lessonStatus(iso, start, end) {
   return "upcoming";
 }
 
-function lessonView(groupId, slot, iso, userId, studentsTotal, labels = new Map()) {
+function lessonView(groupId, slot, iso, userId, studentsTotal, labels = new Map(), homework = []) {
   const counts = attendanceCounts(slot.id, iso);
   const mine = db
     .prepare("SELECT status FROM attendance WHERE slot_id = ? AND date = ? AND user_id = ?")
@@ -143,6 +143,7 @@ function lessonView(groupId, slot, iso, userId, studentsTotal, labels = new Map(
     marked,
     studentsTotal,
     myStatus: mine?.status ?? null,
+    homework,
   };
 }
 
@@ -396,12 +397,25 @@ function schedulePayload(user, dates) {
   return dates.map((iso) => {
     const date = parseIso(iso);
     const slots = slotsForDate(user.groupId, iso, user.subgroup);
+
+    const hwRows = db
+      .prepare(
+        `SELECT id, title, description, due_date, subject_id, slot_id, author_id
+         FROM homework WHERE group_id = ? AND assigned_on = ? ORDER BY id`
+      )
+      .all(user.groupId, iso);
+
     return {
       date: iso,
       weekday: weekdayOf(date),
       label: formatDateRu(iso),
       parity: parityOn(date),
-      lessons: slots.map((s) => lessonView(user.groupId, s, iso, user.id, studentsTotal, labels)),
+      lessons: slots.map((s) => {
+        // ДЗ, привязанное к конкретной паре, показываем только на ней;
+        // привязанное к предмету — на всех парах этого предмета за день
+        const hw = hwRows.filter((h) => (h.slot_id ? h.slot_id === s.id : h.subject_id === s.subject_id));
+        return lessonView(user.groupId, s, iso, user.id, studentsTotal, labels, hw);
+      }),
     };
   });
 }
@@ -512,10 +526,19 @@ api.get("/attendance/:slotId", requireAuth, (req, res) => {
   res.json({
     lesson: {
       slotId: slot.id, date, pair: slot.pair, start: slot.start_time, end: slot.end_time,
-      room: slot.room, subject: slot.subject, color: slot.color,
+      room: slot.room, subject: slot.subject, color: slot.color, subjectId: slot.subject_id,
     },
     people,
     counts: attendanceCounts(slotId, date),
+    homework: db
+      .prepare(
+        `SELECT h.id, h.title, h.description, h.due_date, h.author_id, au.name AS author_name
+         FROM homework h LEFT JOIN users au ON au.id = h.author_id
+         WHERE h.group_id = ? AND h.assigned_on = ?
+           AND (h.slot_id = ? OR (h.slot_id IS NULL AND h.subject_id = ?))
+         ORDER BY h.id`
+      )
+      .all(req.user.groupId, date, slot.id, slot.subject_id),
   });
 });
 
@@ -691,12 +714,15 @@ api.delete("/deadlines/:id", requireAdmin, (req, res) => {
 api.get("/homework", requireAuth, (req, res) => {
   const rows = db
     .prepare(
-      `SELECT h.id, h.title, h.description, h.due_date, h.created_at,
+      `SELECT h.id, h.title, h.description, h.due_date, h.assigned_on, h.created_at,
+              h.author_id, au.name AS author_name,
               s.name AS subject, s.color,
               (SELECT COUNT(*) FROM homework_done d WHERE d.homework_id = h.id) AS done_count,
               (SELECT COUNT(*) FROM users u WHERE u.group_id = h.group_id) AS total,
               EXISTS(SELECT 1 FROM homework_done d WHERE d.homework_id = h.id AND d.user_id = ?) AS mine
-       FROM homework h LEFT JOIN subjects s ON s.id = h.subject_id
+       FROM homework h
+       LEFT JOIN subjects s ON s.id = h.subject_id
+       LEFT JOIN users au ON au.id = h.author_id
        WHERE h.group_id = ?
        ORDER BY (h.due_date IS NULL), h.due_date, h.created_at DESC`
     )
@@ -705,25 +731,37 @@ api.get("/homework", requireAuth, (req, res) => {
   res.json(rows.map((r) => ({ ...r, mine: Boolean(r.mine) })));
 });
 
-api.post("/homework", requireAdmin, (req, res) => {
-  const { title, description, subjectId, dueDate } = req.body ?? {};
+api.post("/homework", requireAuth, (req, res) => {
+  const { title, description, subjectId, dueDate, assignedOn, slotId } = req.body ?? {};
   if (!title?.trim()) return res.status(400).json({ error: "Нужно название задания" });
+
+  const assigned = /^\d{4}-\d{2}-\d{2}$/.test(String(assignedOn ?? "")) ? assignedOn : todayIso();
   if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(dueDate))) {
     return res.status(400).json({ error: "Неверная дата" });
   }
 
+  const subject = subjectId
+    ? db.prepare("SELECT id FROM subjects WHERE id = ? AND group_id = ?").get(Number(subjectId), req.user.groupId)
+    : null;
+
+  const slot = slotId
+    ? db.prepare("SELECT id FROM slots WHERE id = ? AND group_id = ?").get(Number(slotId), req.user.groupId)
+    : null;
+
   const r = db
     .prepare(
-      `INSERT INTO homework (group_id, subject_id, author_id, title, description, due_date, created_at)
-       VALUES (?,?,?,?,?,?,?)`
+      `INSERT INTO homework (group_id, subject_id, slot_id, author_id, title, description, due_date, assigned_on, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`
     )
     .run(
       req.user.groupId,
-      subjectId ? Number(subjectId) : null,
+      subject ? subject.id : null,
+      slot ? slot.id : null,
       req.user.id,
       title.trim().slice(0, 160),
       String(description ?? "").trim().slice(0, 2000),
       dueDate || null,
+      assigned,
       nowIso()
     );
 
@@ -732,8 +770,19 @@ api.post("/homework", requireAdmin, (req, res) => {
   res.status(201).json(row);
 });
 
-api.delete("/homework/:id", requireAdmin, (req, res) => {
-  db.prepare("DELETE FROM homework WHERE id = ? AND group_id = ?").run(Number(req.params.id), req.user.groupId);
+api.delete("/homework/:id", requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  const hw = db
+    .prepare("SELECT id, author_id FROM homework WHERE id = ? AND group_id = ?")
+    .get(id, req.user.groupId);
+  if (!hw) return res.status(404).json({ error: "Задание не найдено" });
+
+  if (req.user.role !== "starosta" && hw.author_id !== req.user.id) {
+    return res.status(403).json({ error: "Удалить может автор или староста" });
+  }
+
+  db.prepare("DELETE FROM homework WHERE id = ?").run(id);
+  broadcast(req.user.groupId, "homework", { id, deleted: true });
   res.json({ ok: true });
 });
 

@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { get, post, subscribe, STATUS } from "../api.js";
+import { useEffect, useState } from "react";
+import { get, post, del, subscribe, STATUS } from "../api.js";
 import { useFetch, Icon, Spinner, ErrorBox, Avatar } from "../ui.jsx";
 import StatusOptions from "../StatusOptions.jsx";
 import { go } from "../router.js";
@@ -24,6 +24,43 @@ export default function Lesson({ me, notify }) {
       await post("/attendance", { slotId, date, status });
       notify(`Отмечено: ${STATUS[status].label}`);
       reload();
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  const [hwTitle, setHwTitle] = useState("");
+  const [hwDue, setHwDue] = useState("");
+  const [hwBusy, setHwBusy] = useState(false);
+
+  async function addHomework(e) {
+    e.preventDefault();
+    if (!hwTitle.trim()) return;
+    setHwBusy(true);
+    try {
+      await post("/homework", {
+        title: hwTitle,
+        subjectId: data.lesson.subjectId,
+        slotId,
+        assignedOn: date,
+        dueDate: hwDue || null,
+      });
+      setHwTitle("");
+      setHwDue("");
+      notify("Домашка добавлена");
+      reload();
+    } catch (err) {
+      notify(err.message, "err");
+    } finally {
+      setHwBusy(false);
+    }
+  }
+
+  async function removeHomework(id) {
+    try {
+      await del(`/homework/${id}`);
+      reload();
+      notify("Удалено");
     } catch (err) {
       notify(err.message, "err");
     }
@@ -64,6 +101,59 @@ export default function Lesson({ me, notify }) {
           {date < todayIso() && <span className="tiny muted">прошедшая пара</span>}
         </div>
         <StatusOptions value={mine?.status} onChange={mark} />
+      </div>
+
+      <div className="section">
+        <div className="section-head">
+          <h2>Домашнее задание</h2>
+          <span className="tiny muted">{data.homework.length ? `${data.homework.length} шт.` : "нет"}</span>
+        </div>
+
+        {data.homework.length > 0 && (
+          <div className="card" style={{ padding: "6px 14px", marginBottom: 10 }}>
+            {data.homework.map((h) => (
+              <div key={h.id} className="hw">
+                <div className="hw-body">
+                  <strong>{h.title}</strong>
+                  {h.description && <p>{h.description}</p>}
+                  <div className="hw-meta">
+                    <span>{h.author_name ?? "без автора"}</span>
+                    <span>{h.due_date ? `сдать ${dayNumber(h.due_date)} ${monthShort(h.due_date)}` : "без срока"}</span>
+                  </div>
+                </div>
+                {(me.user.role === "starosta" || h.author_id === me.user.id) && (
+                  <button type="button" className="icon-btn" onClick={() => removeHomework(h.id)} aria-label="Удалить задание">
+                    <Icon name="x" size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={addHomework} className="hw-form">
+          <input
+            value={hwTitle}
+            onChange={(e) => setHwTitle(e.target.value)}
+            placeholder="Что задали на паре?"
+            maxLength={160}
+          />
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              type="date"
+              value={hwDue}
+              onChange={(e) => setHwDue(e.target.value)}
+              aria-label="Сдать до"
+              style={{ flex: 1 }}
+            />
+            <button type="submit" className="btn primary sm" disabled={hwBusy || !hwTitle.trim()}>
+              {hwBusy ? "…" : "Добавить"}
+            </button>
+          </div>
+        </form>
+        <p className="tiny muted" style={{ marginTop: 6 }}>
+          Добавить может любой, кто был на паре.
+        </p>
       </div>
 
       <div className="section">
