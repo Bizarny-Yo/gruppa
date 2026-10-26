@@ -44,6 +44,15 @@ const demo = (p) => p.locator("button", { hasText: "Открыть" }).first();
 
 console.log("→ экран входа");
 await page.goto(BASE, { waitUntil: "networkidle" });
+
+// У бесплатных туннелей (serveo) бывает страница-предупреждение
+const cont = page.locator("text=Continue to Site").first();
+if (await cont.count()) {
+  console.log("  ↳ прохожу предупреждение туннеля");
+  await cont.click();
+  await page.waitForLoadState("networkidle");
+}
+
 await shot("01-login");
 
 console.log("→ вход в демо");
@@ -101,6 +110,11 @@ const desktop = await browser.newContext({
 const dpage = await desktop.newPage();
 dpage.on("pageerror", (e) => errors.push(`desktop pageerror: ${e.message}`));
 await dpage.goto(BASE, { waitUntil: "networkidle" });
+const dcont = dpage.locator("text=Continue to Site").first();
+if (await dcont.count()) {
+  await dcont.click();
+  await dpage.waitForLoadState("networkidle");
+}
 await demo(dpage).click();
 await dpage.waitForSelector(".lesson, .hero", { timeout: 20000 });
 await dpage.waitForTimeout(700);

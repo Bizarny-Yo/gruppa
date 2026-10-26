@@ -98,15 +98,18 @@ node scripts/make-icons.py      # перегенерировать PWA-икон�
 
 ### Показать группе прямо сейчас — 0 ₽
 
-**Туннель** (публичная HTTPS-ссылка, без аккаунта):
+**Публичная HTTPS-ссылка** через serveo (без аккаунта):
 
 ```powershell
-winget install Cloudflare.cloudflared
-powershell -ExecutionPolicy Bypass -File scripts/tunnel.ps1
+powershell -ExecutionPolicy Bypass -File scripts/tunnel-serveo.ps1
 ```
 
-Ссылка вида `https://xxx.trycloudflare.com` живёт, пока открыто окно. **Прокси/VPN нужно выключить**,
-иначе Cloudflare рвёт соединение (`failed to request quick Tunnel: EOF`).
+Ссылка вида `https://....serveousercontent.com` живёт, пока открыто окно и компьютер включён.
+Важно: цель — `127.0.0.1`, не `localhost` (на Windows `localhost` → IPv6 `::1`, сервер слушает IPv4, будет 502).
+Бесплатный serveo показывает посетителям страницу-предупреждение.
+
+Cloudflare-туннели (`scripts/tunnel.ps1`) удобнее и без предупреждения, но на некоторых сетях
+не регистрируются (`Register tunnel error: context deadline exceeded`).
 
 **Локальная сеть** — если телефон в той же Wi-Fi:
 
@@ -115,6 +118,7 @@ http://<IP-компьютера>:47824
 ```
 
 Windows спросит про доступ к сети — надо разрешить (или добавить правило для порта 47824).
+Учтите: по `http://` браузеры не дают включить push-уведомления — нужен HTTPS.
 
 ### Постоянный хостинг
 
