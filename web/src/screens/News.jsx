@@ -212,6 +212,7 @@ export default function News({ me, notify }) {
                   <strong>{h.title}</strong>
                   {h.description && <p>{h.description}</p>}
                   <div className="hw-meta">
+                    {h.status === "pending" && <span style={{ color: "var(--warn)" }}>на проверке</span>}
                     {h.subject && <span style={{ color: h.color }}>{h.subject}</span>}
                     <span>{h.assigned_on ? `задано ${dayNumber(h.assigned_on)} ${monthShort(h.assigned_on)}` : "без даты"}</span>
                     <span>{h.due_date ? `сдать ${dayNumber(h.due_date)} ${monthShort(h.due_date)}` : "без срока"}</span>

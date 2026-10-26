@@ -153,6 +153,19 @@ CREATE TABLE IF NOT EXISTS bans (
   UNIQUE (group_id, name_key)
 );
 
+CREATE TABLE IF NOT EXISTS audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_id INTEGER NOT NULL,
+  actor_id INTEGER,
+  actor_name TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,
+  target TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_group ON audit(group_id, id);
+
 CREATE INDEX IF NOT EXISTS idx_bans_group ON bans(group_id);
 
 CREATE INDEX IF NOT EXISTS idx_files_group ON files(group_id, subject_id);
@@ -194,6 +207,8 @@ ensureColumn("groups", "program", "program TEXT");
 ensureColumn("groups", "profile", "profile TEXT");
 ensureColumn("homework", "assigned_on", "assigned_on TEXT");
 ensureColumn("homework", "slot_id", "slot_id INTEGER");
+ensureColumn("homework", "status", "status TEXT NOT NULL DEFAULT 'approved'");
+ensureColumn("files", "status", "status TEXT NOT NULL DEFAULT 'approved'");
 
 if (!getSetting("semester_start")) {
   // По умолчанию — понедельник недели, в которую попадает 1 сентября текущего года

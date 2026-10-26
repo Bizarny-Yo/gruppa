@@ -4,11 +4,38 @@ import { useFetch, Icon, Avatar, Sheet, Spinner, ErrorBox } from "../ui.jsx";
 import PushToggle from "../PushToggle.jsx";
 import { WEEKDAYS_SHORT } from "../dates.js";
 
+const ACTION_LABEL = {
+  "homework.add": "добавил ДЗ",
+  "homework.approve": "одобрил ДЗ",
+  "homework.reject": "отклонил ДЗ",
+  "file.add": "загрузил файл",
+  "file.approve": "одобрил файл",
+  "file.reject": "отклонил файл",
+  "announcement.add": "создал объявление",
+  "announcement.delete": "удалил объявление",
+  "deadline.add": "добавил дедлайн",
+  "deadline.delete": "удалил дедлайн",
+  "member.remove": "исключил из группы",
+  "group.code": "сменил код группы",
+  "attendance.day": "отметил день",
+  "profile.name": "сменил имя",
+};
+
+const fmtTime = (iso) =>
+  new Date(iso).toLocaleString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 export default function Group({ me, onLogout, onRefresh, notify }) {
   const members = useFetch(() => get("/members"), []);
   const subjects = useFetch(() => get("/subjects"), []);
   const subgroups = useFetch(() => get("/subgroups"), []);
   const bans = useFetch(() => get("/bans"), []);
+  const moderation = useFetch(() => (me.user.role === "starosta" ? get("/moderation") : Promise.resolve(null)), []);
+  const audit = useFetch(() => (me.user.role === "starosta" ? get("/audit") : Promise.resolve(null)), []);
   const [sheet, setSheet] = useState(null); // "slot" | "subject"
   const [nameSheet, setNameSheet] = useState(false);
   const [nameValue, setNameValue] = useState(me.user.name);
@@ -54,6 +81,9 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
       ];
   const currentSubgroup = subgroupList.find((g) => g.code === selectedSubgroup) ?? null;
 
+  const pending = moderation.data ?? { homework: [], files: [] };
+  const pendingCount = (pending.homework?.length ?? 0) + (pending.files?.length ?? 0);
+
   async function saveName(e) {
     e.preventDefault();
     setSavingName(true);
@@ -78,6 +108,17 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
       members.reload();
       bans.reload();
       onRefresh?.();
+    } catch (err) {
+      notify(err.message, "err");
+    }
+  }
+
+  async function moderate(type, id, decision) {
+    try {
+      await post(`/moderation/${type}/${id}`, { decision });
+      moderation.reload();
+      audit.reload();
+      notify(decision === "approve" ? "Одобрено" : "Отклонено");
     } catch (err) {
       notify(err.message, "err");
     }
@@ -293,6 +334,102 @@ export default function Group({ me, onLogout, onRefresh, notify }) {
                   <button type="button" className="btn sm ghost" onClick={() => unban(b.id, b.name)}>
                     разбанить
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="section">
+          <div className="section-head">
+            <h2>На модерации</h2>
+            <span className="tiny muted">{pendingCount || "пусто"}</span>
+          </div>
+
+          {pendingCount === 0 ? (
+            <div className="tiny muted" style={{ padding: "2px 2px 6px" }}>
+              Всё, что добавляют студенты — ДЗ и файлы — сначала попадает сюда
+            </div>
+          ) : (
+            <div className="card" style={{ padding: "6px 14px" }}>
+              {pending.homework.map((h) => (
+                <div key={`h${h.id}`} className="person">
+                  <span className="file-icon">
+                    <Icon name="book" size={15} />
+                  </span>
+                  <div className="who-name">
+                    <strong>{h.title}</strong>
+                    <span>
+                      ДЗ · {h.author_name ?? "—"}
+                      {h.subject ? ` · ${h.subject}` : ""}
+                    </span>
+                  </div>
+                  <div className="row" style={{ gap: 6 }}>
+                    <button type="button" className="btn sm" onClick={() => moderate("homework", h.id, "approve")}>
+                      одобрить
+                    </button>
+                    <button type="button" className="icon-btn" onClick={() => moderate("homework", h.id, "reject")} aria-label="Отклонить">
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {pending.files.map((f) => (
+                <div key={`f${f.id}`} className="person">
+                  <span className="file-icon">
+                    <Icon name="folder" size={15} />
+                  </span>
+                  <div className="who-name">
+                    <strong>{f.name}</strong>
+                    <span>
+                      файл · {f.uploader_name ?? "—"}
+                      {f.subject ? ` · ${f.subject}` : ""}
+                    </span>
+                  </div>
+                  <div className="row" style={{ gap: 6 }}>
+                    <button type="button" className="btn sm" onClick={() => moderate("files", f.id, "approve")}>
+                      одобрить
+                    </button>
+                    <button type="button" className="icon-btn" onClick={() => moderate("files", f.id, "reject")} aria-label="Отклонить">
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="section">
+          <div className="section-head">
+            <h2>Журнал изменений</h2>
+            <span className="tiny muted">{(audit.data ?? []).length} записей</span>
+          </div>
+
+          {(audit.data ?? []).length === 0 ? (
+            <div className="tiny muted" style={{ padding: "2px 2px 6px" }}>
+              Здесь появятся действия: кто что добавил, изменил или удалил
+            </div>
+          ) : (
+            <div className="card" style={{ padding: "4px 14px" }}>
+              {(audit.data ?? []).slice(0, 15).map((a) => (
+                <div key={a.id} className="person">
+                  <div className="who-name">
+                    <strong>{a.actor_name}</strong>
+                    <span>
+                      {ACTION_LABEL[a.action] ?? a.action}
+                      {a.target ? `: ${a.target}` : ""}
+                      {a.detail ? ` · ${a.detail}` : ""}
+                    </span>
+                  </div>
+                  <span className="tiny muted" style={{ whiteSpace: "nowrap" }}>
+                    {fmtTime(a.created_at)}
+                  </span>
                 </div>
               ))}
             </div>

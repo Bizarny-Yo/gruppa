@@ -58,6 +58,26 @@ export function sseHandler(req, res) {
 
 const STATUSES = ["going", "late", "absent", "sick"];
 
+/** Журнал действий: кто что изменил. Ошибка журнала не должна ломать запрос. */
+function logAction(user, action, target = "", detail = "") {
+  try {
+    db.prepare(
+      `INSERT INTO audit (group_id, actor_id, actor_name, action, target, detail, created_at)
+       VALUES (?,?,?,?,?,?,?)`
+    ).run(
+      user.groupId,
+      user.id ?? null,
+      user.name ?? "",
+      action,
+      String(target).slice(0, 200),
+      String(detail).slice(0, 300),
+      nowIso()
+    );
+  } catch {
+    /* журнал не критичен */
+  }
+}
+
 const userPublic = (u) => ({ id: u.id, name: u.name, role: u.role, color: u.color, subgroup: u.subgroup ?? null });
 
 /** «Маклецов С. В.» → «Маклецов» */
@@ -305,6 +325,7 @@ api.patch("/me", requireAuth, (req, res) => {
   if (clash) return res.status(409).json({ error: "Такое имя уже занято в группе" });
 
   db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name, req.user.id);
+  if (name !== req.user.name) logAction(req.user, "profile.name", name, `было: ${req.user.name}`);
   res.json({ ok: true, name });
 });
 
@@ -327,6 +348,7 @@ api.delete("/members/:id", requireAdmin, (req, res) => {
   ).run(req.user.groupId, target.name, target.name.trim().toLowerCase(), req.user.id, nowIso());
 
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
+  logAction(req.user, "member.remove", target.name);
   broadcast(req.user.groupId, "roster", { reason: "removed", userId: id });
   res.json({ ok: true, removed: target.name, banned: true });
 });
@@ -441,6 +463,7 @@ api.patch("/group", requireAdmin, (req, res) => {
   if (taken) return res.status(409).json({ error: "Такой код уже занят другой группой" });
 
   db.prepare("UPDATE groups SET code = ? WHERE id = ?").run(code, req.user.groupId);
+  logAction(req.user, "group.code", code);
   res.json({ ok: true, code });
 });
 
@@ -459,7 +482,7 @@ function schedulePayload(user, dates) {
     const hwRows = db
       .prepare(
         `SELECT id, title, description, due_date, subject_id, slot_id, author_id
-         FROM homework WHERE group_id = ? AND assigned_on = ? ORDER BY id`
+         FROM homework WHERE group_id = ? AND assigned_on = ? AND status = 'approved' ORDER BY id`
       )
       .all(user.groupId, iso);
 
@@ -551,6 +574,7 @@ api.post("/attendance/day", requireAuth, (req, res) => {
   const markedAt = nowIso();
   for (const slot of slots) upsert.run(slot.id, date, req.user.id, status, markedAt);
 
+  logAction(req.user, "attendance.day", date, `${status} · ${slots.length} пар`);
   broadcast(req.user.groupId, "attendance", {
     bulk: true, date, userId: req.user.id, status, slotIds: slots.map((s) => s.id),
   });
@@ -592,7 +616,7 @@ api.get("/attendance/:slotId", requireAuth, (req, res) => {
       .prepare(
         `SELECT h.id, h.title, h.description, h.due_date, h.author_id, au.name AS author_name
          FROM homework h LEFT JOIN users au ON au.id = h.author_id
-         WHERE h.group_id = ? AND h.assigned_on = ?
+         WHERE h.group_id = ? AND h.assigned_on = ? AND h.status = 'approved'
            AND (h.slot_id = ? OR (h.slot_id IS NULL AND h.subject_id = ?))
          ORDER BY h.id`
       )
@@ -721,6 +745,7 @@ api.post("/announcements", requireAdmin, (req, res) => {
     .prepare("INSERT INTO announcements (group_id, author_id, title, body, pinned, created_at) VALUES (?,?,?,?,?,?)")
     .run(req.user.groupId, req.user.id, title.trim(), String(body ?? "").trim(), pinned ? 1 : 0, nowIso());
   const row = db.prepare("SELECT * FROM announcements WHERE id = ?").get(Number(r.lastInsertRowid));
+  logAction(req.user, "announcement.add", row.title);
   broadcast(req.user.groupId, "announcement", row);
 
   // push всей группе — не блокируем ответ
@@ -735,7 +760,11 @@ api.post("/announcements", requireAdmin, (req, res) => {
 });
 
 api.delete("/announcements/:id", requireAdmin, (req, res) => {
+  const row = db
+    .prepare("SELECT title FROM announcements WHERE id = ? AND group_id = ?")
+    .get(Number(req.params.id), req.user.groupId);
   db.prepare("DELETE FROM announcements WHERE id = ? AND group_id = ?").run(Number(req.params.id), req.user.groupId);
+  if (row) logAction(req.user, "announcement.delete", row.title);
   res.json({ ok: true });
 });
 
@@ -759,20 +788,27 @@ api.post("/deadlines", requireAdmin, (req, res) => {
   const r = db
     .prepare("INSERT INTO deadlines (group_id, subject_id, title, due_date, created_at) VALUES (?,?,?,?,?)")
     .run(req.user.groupId, subjectId ? Number(subjectId) : null, title.trim(), dueDate, nowIso());
-  res.status(201).json(db.prepare("SELECT * FROM deadlines WHERE id = ?").get(Number(r.lastInsertRowid)));
+  const created = db.prepare("SELECT * FROM deadlines WHERE id = ?").get(Number(r.lastInsertRowid));
+  logAction(req.user, "deadline.add", title.trim(), dueDate);
+  res.status(201).json(created);
 });
 
 api.delete("/deadlines/:id", requireAdmin, (req, res) => {
+  const row = db
+    .prepare("SELECT title FROM deadlines WHERE id = ? AND group_id = ?")
+    .get(Number(req.params.id), req.user.groupId);
   db.prepare("DELETE FROM deadlines WHERE id = ? AND group_id = ?").run(Number(req.params.id), req.user.groupId);
+  if (row) logAction(req.user, "deadline.delete", row.title);
   res.json({ ok: true });
 });
 
 /* ───────────────────────── домашние задания ───────────────────────── */
 
 api.get("/homework", requireAuth, (req, res) => {
+  const isAdmin = req.user.role === "starosta";
   const rows = db
     .prepare(
-      `SELECT h.id, h.title, h.description, h.due_date, h.assigned_on, h.created_at,
+      `SELECT h.id, h.title, h.description, h.due_date, h.assigned_on, h.created_at, h.status,
               h.author_id, au.name AS author_name,
               s.name AS subject, s.color,
               (SELECT COUNT(*) FROM homework_done d WHERE d.homework_id = h.id) AS done_count,
@@ -781,10 +817,10 @@ api.get("/homework", requireAuth, (req, res) => {
        FROM homework h
        LEFT JOIN subjects s ON s.id = h.subject_id
        LEFT JOIN users au ON au.id = h.author_id
-       WHERE h.group_id = ?
+       WHERE h.group_id = ? AND (? = 1 OR h.status = 'approved' OR h.author_id = ?)
        ORDER BY (h.due_date IS NULL), h.due_date, h.created_at DESC`
     )
-    .all(req.user.id, req.user.groupId);
+    .all(req.user.id, req.user.groupId, isAdmin ? 1 : 0, req.user.id);
 
   res.json(rows.map((r) => ({ ...r, mine: Boolean(r.mine) })));
 });
@@ -806,10 +842,12 @@ api.post("/homework", requireAuth, (req, res) => {
     ? db.prepare("SELECT id FROM slots WHERE id = ? AND group_id = ?").get(Number(slotId), req.user.groupId)
     : null;
 
+  const status = req.user.role === "starosta" ? "approved" : "pending";
+
   const r = db
     .prepare(
-      `INSERT INTO homework (group_id, subject_id, slot_id, author_id, title, description, due_date, assigned_on, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO homework (group_id, subject_id, slot_id, author_id, title, description, due_date, assigned_on, status, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       req.user.groupId,
@@ -820,10 +858,12 @@ api.post("/homework", requireAuth, (req, res) => {
       String(description ?? "").trim().slice(0, 2000),
       dueDate || null,
       assigned,
+      status,
       nowIso()
     );
 
   const row = db.prepare("SELECT * FROM homework WHERE id = ?").get(Number(r.lastInsertRowid));
+  logAction(req.user, "homework.add", title.trim().slice(0, 80), status === "pending" ? "на проверке" : "опубликовано");
   broadcast(req.user.groupId, "homework", row);
   res.status(201).json(row);
 });
@@ -890,17 +930,18 @@ const fileRow = (id, groupId) =>
     .get(id, groupId);
 
 api.get("/files", requireAuth, (req, res) => {
+  const isAdmin = req.user.role === "starosta";
   const rows = db
     .prepare(
-      `SELECT f.id, f.name, f.mime, f.size, f.created_at, f.subject_id, f.uploader_id,
+      `SELECT f.id, f.name, f.mime, f.size, f.created_at, f.status, f.subject_id, f.uploader_id,
               u.name AS uploader_name, s.name AS subject, s.color
        FROM files f
        LEFT JOIN users u ON u.id = f.uploader_id
        LEFT JOIN subjects s ON s.id = f.subject_id
-       WHERE f.group_id = ?
+       WHERE f.group_id = ? AND (? = 1 OR f.status = 'approved' OR f.uploader_id = ?)
        ORDER BY f.created_at DESC`
     )
-    .all(req.user.groupId);
+    .all(req.user.groupId, isAdmin ? 1 : 0, req.user.id);
   res.json(rows);
 });
 
@@ -931,10 +972,12 @@ api.post("/files", requireAuth, express.raw({ type: () => true, limit: "40mb" })
   const storedName = `${randomBytes(16).toString("hex")}${ext}`;
   writeFileSync(join(UPLOADS_DIR, storedName), body);
 
+  const status = req.user.role === "starosta" ? "approved" : "pending";
+
   const r = db
     .prepare(
-      `INSERT INTO files (group_id, subject_id, uploader_id, name, stored_name, mime, size, created_at)
-       VALUES (?,?,?,?,?,?,?,?)`
+      `INSERT INTO files (group_id, subject_id, uploader_id, name, stored_name, mime, size, status, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`
     )
     .run(
       req.user.groupId,
@@ -944,10 +987,12 @@ api.post("/files", requireAuth, express.raw({ type: () => true, limit: "40mb" })
       storedName,
       String(req.headers["content-type"] ?? "application/octet-stream").slice(0, 120),
       body.length,
+      status,
       nowIso()
     );
 
   const row = fileRow(Number(r.lastInsertRowid), req.user.groupId);
+  logAction(req.user, "file.add", safeName, status === "pending" ? "на проверке" : "опубликован");
   broadcast(req.user.groupId, "files", row);
   res.status(201).json(row);
 });
@@ -986,6 +1031,98 @@ api.delete("/files/:id", requireAuth, (req, res) => {
   }
   db.prepare("DELETE FROM files WHERE id = ?").run(f.id);
   res.json({ ok: true });
+});
+
+/* ───────────────────────── модерация ───────────────────────── */
+
+api.get("/moderation", requireAdmin, (req, res) => {
+  const homework = db
+    .prepare(
+      `SELECT h.id, h.title, h.description, h.due_date, h.assigned_on, h.created_at,
+              h.author_id, u.name AS author_name, s.name AS subject, s.color
+       FROM homework h
+       LEFT JOIN users u ON u.id = h.author_id
+       LEFT JOIN subjects s ON s.id = h.subject_id
+       WHERE h.group_id = ? AND h.status = 'pending'
+       ORDER BY h.id DESC`
+    )
+    .all(req.user.groupId);
+
+  const files = db
+    .prepare(
+      `SELECT f.id, f.name, f.size, f.created_at, f.uploader_id, f.subject_id,
+              u.name AS uploader_name, s.name AS subject, s.color
+       FROM files f
+       LEFT JOIN users u ON u.id = f.uploader_id
+       LEFT JOIN subjects s ON s.id = f.subject_id
+       WHERE f.group_id = ? AND f.status = 'pending'
+       ORDER BY f.id DESC`
+    )
+    .all(req.user.groupId);
+
+  res.json({ homework, files });
+});
+
+api.post("/moderation/:type/:id", requireAdmin, (req, res) => {
+  const type = req.params.type;
+  const id = Number(req.params.id);
+  const decision = req.body?.decision;
+
+  if (!["approve", "reject"].includes(decision)) {
+    return res.status(400).json({ error: "decision: approve или reject" });
+  }
+
+  if (type === "homework") {
+    const row = db
+      .prepare("SELECT id, title FROM homework WHERE id = ? AND group_id = ?")
+      .get(id, req.user.groupId);
+    if (!row) return res.status(404).json({ error: "Задание не найдено" });
+
+    if (decision === "approve") {
+      db.prepare("UPDATE homework SET status = 'approved' WHERE id = ?").run(id);
+    } else {
+      db.prepare("DELETE FROM homework WHERE id = ?").run(id);
+    }
+
+    logAction(req.user, `homework.${decision}`, row.title);
+    broadcast(req.user.groupId, "homework", { id, moderation: decision });
+    return res.json({ ok: true });
+  }
+
+  if (type === "files") {
+    const row = db
+      .prepare("SELECT * FROM files WHERE id = ? AND group_id = ?")
+      .get(id, req.user.groupId);
+    if (!row) return res.status(404).json({ error: "Файл не найден" });
+
+    if (decision === "approve") {
+      db.prepare("UPDATE files SET status = 'approved' WHERE id = ?").run(id);
+    } else {
+      try {
+        unlinkSync(join(UPLOADS_DIR, row.stored_name));
+      } catch {
+        /* уже удалён */
+      }
+      db.prepare("DELETE FROM files WHERE id = ?").run(id);
+    }
+
+    logAction(req.user, `file.${decision}`, row.name);
+    broadcast(req.user.groupId, "files", { id, moderation: decision });
+    return res.json({ ok: true });
+  }
+
+  res.status(400).json({ error: "Неизвестный тип" });
+});
+
+api.get("/audit", requireAdmin, (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT id, actor_name, action, target, detail, created_at
+         FROM audit WHERE group_id = ? ORDER BY id DESC LIMIT 60`
+      )
+      .all(req.user.groupId)
+  );
 });
 
 /* ───────────────────────── админ: расписание ───────────────────────── */

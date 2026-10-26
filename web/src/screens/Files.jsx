@@ -140,6 +140,7 @@ export default function Files({ me, notify }) {
                       {f.name}
                     </a>
                     <div className="file-meta">
+                      {f.status === "pending" && <span style={{ color: "var(--warn)" }}>на проверке · </span>}
                       {humanSize(f.size)} · {f.uploader_name ?? "—"} · {dateRu(f.created_at)}
                     </div>
                   </div>
