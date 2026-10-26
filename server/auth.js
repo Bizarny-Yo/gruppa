@@ -47,9 +47,16 @@ export function parseCookies(header = "") {
   return out;
 }
 
-export function sessionCookie(token, expires) {
+export function sessionCookie(token, expires, secure = false) {
   const maxAge = Math.floor((new Date(expires) - Date.now()) / 1000);
-  return `sid=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}`;
+  return `sid=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
+}
+
+/** Запрос пришёл по HTTPS? (учитываем прокси — Caddy, serveo) */
+export function isSecureRequest(req) {
+  if (req.secure) return true;
+  const proto = req.headers["x-forwarded-proto"];
+  return typeof proto === "string" && proto.split(",")[0].trim() === "https";
 }
 
 export function clearCookie() {

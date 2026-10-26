@@ -14,6 +14,7 @@ const HOST = process.env.HOST ?? "0.0.0.0";
 
 const app = express();
 app.disable("x-powered-by");
+app.set("trust proxy", 1); // за Caddy/serveo: нужен реальный IP для лимитов и Secure-cookie
 app.use(express.json({ limit: "256kb" }));
 
 // Server-Sent Events для live-обновлений (до express.json не нужен, но и не мешает)

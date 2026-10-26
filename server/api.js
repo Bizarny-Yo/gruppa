@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db, nowIso, isEmpty, makeGroup, seedDemo, pairTimes, getSetting } from "./db.js";
 import {
   hashPassword, verifyPassword, createSession, destroySession,
-  userFromRequest, requireAuth, requireAdmin, sessionCookie, clearCookie, parseCookies,
+  userFromRequest, requireAuth, requireAdmin, sessionCookie, clearCookie, parseCookies, isSecureRequest,
 } from "./auth.js";
 import {
   publicKey, saveSubscription, removeSubscription, sendTest, sendToGroup, userHasSubscription,
@@ -148,6 +148,31 @@ function lessonView(groupId, slot, iso, userId, studentsTotal, labels = new Map(
 
 /* ──────────────────────────── auth ──────────────────────────── */
 
+/** Примитивный лимит попыток: защита от перебора паролей */
+const attempts = new Map();
+
+function allowAttempt(key, limit = 8, windowMs = 60_000) {
+  const now = Date.now();
+
+  if (attempts.size > 5000) {
+    for (const [k, v] of attempts) if (v.resetAt < now) attempts.delete(k);
+  }
+
+  const rec = attempts.get(key);
+  if (!rec || rec.resetAt < now) {
+    attempts.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  rec.count += 1;
+  return rec.count <= limit;
+}
+
+function tooMany(res) {
+  return res.status(429).json({ error: "Слишком много попыток. Подожди минуту." });
+}
+
+const clientKey = (req) => req.ip ?? req.socket?.remoteAddress ?? "unknown";
+
 api.post("/auth/setup", (req, res) => {
   if (!isEmpty()) return res.status(403).json({ error: "Группа уже создана" });
   const { groupName, code, name, password } = req.body ?? {};
@@ -162,14 +187,15 @@ api.post("/auth/setup", (req, res) => {
   });
   const user = db.prepare("SELECT * FROM users WHERE group_id = ? AND role = 'starosta'").get(groupId);
   const { token, expires } = createSession(user.id);
-  res.setHeader("set-cookie", sessionCookie(token, expires));
+  res.setHeader("set-cookie", sessionCookie(token, expires, isSecureRequest(req)));
   res.json({ user: userPublic(user) });
 });
 
 api.post("/auth/register", (req, res) => {
   const { code, name, password } = req.body ?? {};
   if (!code || !name?.trim() || !password) return res.status(400).json({ error: "Заполните все поля" });
-  if (String(password).length < 4) return res.status(400).json({ error: "Пароль минимум 4 символа" });
+  if (!allowAttempt(`reg|${clientKey(req)}`, 30, 60_000)) return tooMany(res);
+  if (String(password).length < 8) return res.status(400).json({ error: "Пароль минимум 8 символов" });
 
   const group = db.prepare("SELECT * FROM groups WHERE code = ?").get(String(code).trim().toUpperCase());
   if (!group) return res.status(404).json({ error: "Группа с таким кодом не найдена" });
@@ -186,7 +212,7 @@ api.post("/auth/register", (req, res) => {
     .run(group.id, name.trim(), "student", hashPassword(password), color, nowIso());
 
   const { token, expires } = createSession(Number(r.lastInsertRowid));
-  res.setHeader("set-cookie", sessionCookie(token, expires));
+  res.setHeader("set-cookie", sessionCookie(token, expires, isSecureRequest(req)));
   broadcast(group.id, "roster", { reason: "new-student" });
   res.status(201).json({ user: { id: Number(r.lastInsertRowid), name: name.trim(), role: "student", color } });
 });
@@ -194,6 +220,9 @@ api.post("/auth/register", (req, res) => {
 api.post("/auth/login", (req, res) => {
   const { code, name, password } = req.body ?? {};
   if (!code || !name || !password) return res.status(400).json({ error: "Заполните все поля" });
+
+  const key = `${clientKey(req)}|${String(code).toUpperCase()}|${String(name).toLowerCase()}`;
+  if (!allowAttempt(key)) return tooMany(res);
 
   const group = db.prepare("SELECT * FROM groups WHERE code = ?").get(String(code).trim().toUpperCase());
   if (!group) return res.status(404).json({ error: "Группа не найдена" });
@@ -207,7 +236,7 @@ api.post("/auth/login", (req, res) => {
   }
 
   const { token, expires } = createSession(user.id);
-  res.setHeader("set-cookie", sessionCookie(token, expires));
+  res.setHeader("set-cookie", sessionCookie(token, expires, isSecureRequest(req)));
   res.json({ user: userPublic(user) });
 });
 
