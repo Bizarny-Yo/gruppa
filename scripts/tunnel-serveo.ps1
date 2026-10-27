@@ -2,7 +2,7 @@
 #
 # Закреплённое имя требует зарегистрированного SSH-ключа:
 #   https://console.serveo.net/ssh/keys  (вход через GitHub/Google)
-# Ключ этой машины уже привязан к аккаунту, поэтому имя gruppa-05605 стабильно.
+# Ключ этой машины уже привязан к аккаунту, поэтому имя gruppa-605x стабильно.
 #
 # Важно: цель указываем как 127.0.0.1, а не localhost —
 # иначе Windows резолвит в IPv6 ::1 и получается 502.
@@ -14,7 +14,7 @@
 
 param(
   [int]$Port = 47824,
-  [string]$Name = "gruppa-05605"
+  [string]$Name = "gruppa-605x"
 )
 
 $ssh = "C:\WINDOWS\System32\OpenSSH\ssh.exe"
@@ -30,7 +30,7 @@ Write-Host "  Ctrl+C — остановить." -ForegroundColor DarkGray
 Write-Host ""
 
 while ($true) {
-  & $ssh -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes `
+  & $ssh -p 443 -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes `
     -o ServerAliveInterval=20 -o ServerAliveCountMax=3 `
     -R "${Name}:80:127.0.0.1:$Port" serveo.net
   Write-Host "  туннель закрылся, переподключаюсь через 3с" -ForegroundColor DarkGray

@@ -1,4 +1,4 @@
-# HANDOFF — состояние проекта и как продолжить
+﻿# HANDOFF — состояние проекта и как продолжить
 
 Файл для нового чата: у агента нет памяти между сессиями.
 Прочитай целиком → `README.md` → `git log --oneline -15`.
@@ -31,7 +31,7 @@
 cd C:\Users\v_alb\OneDrive\Документы\deepseek-harness\default-workspace\gruppa
 
 # 1. проверить, живой ли сайт
-curl.exe -s https://gruppa-05605.serveousercontent.com/api/health
+curl.exe -s https://gruppa-605x.serveousercontent.com/api/health
 
 # 2. если нет — поднять всё (сервер + туннель с автопереподключением)
 powershell -ExecutionPolicy Bypass -File scripts\run-all.ps1
@@ -47,13 +47,13 @@ Node в PATH нет — полный путь:
 
 ## Публичный адрес
 
-**https://gruppa-05605.serveousercontent.com**
+**https://gruppa-605x.serveousercontent.com**
 
-Туннель: serveo.net, имя `gruppa-05605` закреплено за SSH-ключом пользователя
+Туннель: serveo.net, имя `gruppa-605x` закреплено за SSH-ключом пользователя
 (ключ зарегистрирован в консоли serveo — вход через GitHub).
 
 Важные грабли, уже пойманные:
-- цель указывать `127.0.0.1`, не `localhost` — иначе IPv6 `::1` и 502
+- **ssh идёт на -p 443**: порт 22 блокируется, когда включён прокси (FlClash). Симптом — connect to host serveo.net port 22: Connection timed out`n- цель указывать `127.0.0.1`, не `localhost` — иначе IPv6 `::1` и 502
 - serveo рвёт соединение каждые ~30 минут → нужен цикл переподключения (`run-all.ps1`)
 - после обрыва serveo может **держать порт 80 за старым именем** (`remote port forwarding failed`).
   Тогда берём новое имя: `-R "gruppa-xxxxx:80:127.0.0.1:47824"`. Так потеряли `gruppa-pmi21`.

@@ -13,7 +13,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
 $port = 47824
-$name = "gruppa-05605"
+$name = "gruppa-605x"
 
 function Find-Node {
   $cmd = Get-Command node -ErrorAction SilentlyContinue
@@ -55,7 +55,7 @@ if (-not $ssh) {
 Write-Host "Туннель: https://$name.serveousercontent.com" -ForegroundColor Cyan
 
 while ($true) {
-  & $ssh -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes `
+  & $ssh -p 443 -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes `
     -o ServerAliveInterval=20 -o ServerAliveCountMax=3 `
     -R "${name}:80:127.0.0.1:$port" serveo.net 2>&1 | Out-Null
 
